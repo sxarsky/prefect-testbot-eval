@@ -35,3 +35,14 @@ jobs:
           skyramp_license_file: ${{ secrets.SKYRAMP_LICENSE_FILE }}
           anthropic_api_key: ${{ secrets.SKYRAMP_TESTBOT_API_KEY }}
           github_token: ${{ steps.app-token.outputs.token }}
+
+          target_setup_command: './deployment-testbot/setup.sh'
+          target_ready_check_command: 'curl -f http://localhost:4200/api/health'
+          target_ready_check_timeout: 90
+          auth_token_command: './deployment-testbot/get-token.sh'
+          skyramp_mcp_version: next
+
+          test_directory: 'tests'
+          auto_commit: true
+          post_pr_comment: true
+          enable_debug: true
