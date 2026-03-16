@@ -12,6 +12,9 @@ docker compose build prefect-server
 echo "Starting Prefect services..."
 docker compose up -d --wait
 
+echo "Ensuring all database tables exist..."
+docker compose exec -T prefect-server uv run python3 /opt/prefect/ensure-tables.py
+
 echo "Creating sample flows..."
 # Create Python script for sample flows
 docker compose exec -T prefect-server bash << 'EOF'
