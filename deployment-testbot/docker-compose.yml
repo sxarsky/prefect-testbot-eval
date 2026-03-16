@@ -9,6 +9,7 @@ services:
       - "4200:4200"
     volumes:
       - ../src:/opt/prefect/src
+      - ./init-db.py:/opt/prefect/init-db.py
     environment:
       - PREFECT_SERVER_API_HOST=0.0.0.0
       - PREFECT_SERVER_API_PORT=4200

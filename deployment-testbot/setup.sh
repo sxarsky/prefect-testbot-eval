@@ -12,6 +12,9 @@ docker compose up -d
 echo "Waiting for service to be ready..."
 sleep 15
 
+echo "Initializing database tables for new features..."
+docker compose exec -T prefect-server python3 /opt/prefect/init-db.py || echo "Warning: DB init failed, tables may already exist"
+
 echo "Creating sample flows..."
 # Create Python script for sample flows
 docker compose exec -T prefect-server bash << 'EOF'
