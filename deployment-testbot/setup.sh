@@ -7,7 +7,7 @@ set -e
 cd "$(dirname "$0")"
 
 echo "Building Prefect server from local source..."
-docker compose build prefect-server
+docker compose build --no-cache --pull prefect-server
 
 echo "Starting Prefect services..."
 docker compose up -d --wait
