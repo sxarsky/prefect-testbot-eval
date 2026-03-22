@@ -6,6 +6,7 @@ from . import (
     block_documents,
     block_schemas,
     block_types,
+    checkpoints_v2,
     collections,
     concurrency_limits,
     concurrency_limits_v2,

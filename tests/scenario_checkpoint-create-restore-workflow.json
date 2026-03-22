@@ -1,0 +1,56 @@
+[
+  {
+    "Source": "192.168.65.1:39998",
+    "Destination": "127.0.0.1",
+    "RequestBody": "{\"workflow_state\": \"running\", \"step\": 2}",
+    "ResponseBody": "{\"checkpoint_id\": \"new-checkpoint\", \"run_id\": \"3fa85f64-5717-4562-b3fc-2c963f66afa6\", \"task_name\": \"workflow-task\", \"saved\": true}",
+    "RequestHeaders": {
+      "Content-Type": [
+        "application/json"
+      ]
+    },
+    "ResponseHeaders": {
+      "Content-Type": [
+        "application/json"
+      ]
+    },
+    "Method": "POST",
+    "Path": "/api/flow-checkpoints/runs/3fa85f64-5717-4562-b3fc-2c963f66afa6",
+    "QueryParams": {
+      "task_name": [
+        "workflow-task"
+      ]
+    },
+    "StatusCode": 200,
+    "Port": 4200,
+    "Timestamp": "2026-03-20T18:38:15.536Z",
+    "Scheme": "http"
+  },
+  {
+    "Source": "192.168.65.1:39998",
+    "Destination": "127.0.0.1",
+    "RequestBody": "{}",
+    "ResponseBody": "{\"run_id\": \"3fa85f64-5717-4562-b3fc-2c963f66afa6\", \"checkpoint_id\": \"new-checkpoint\", \"restored\": true, \"resume_task\": \"task-3\"}",
+    "RequestHeaders": {
+      "Content-Type": [
+        "application/json"
+      ]
+    },
+    "ResponseHeaders": {
+      "Content-Type": [
+        "application/json"
+      ]
+    },
+    "Method": "POST",
+    "Path": "/api/flow-checkpoints/runs/3fa85f64-5717-4562-b3fc-2c963f66afa6/restore",
+    "QueryParams": {
+      "checkpoint_id": [
+        "new-checkpoint"
+      ]
+    },
+    "StatusCode": 200,
+    "Port": 4200,
+    "Timestamp": "2026-03-20T18:38:37.423Z",
+    "Scheme": "http"
+  }
+]
