@@ -12,8 +12,26 @@ async def list_checkpoints(run_id: str):
     return {
         "run_id": run_id,
         "checkpoints": [
-            {"id": "1", "task_name": "task-1", "timestamp": "2026-03-20T10:00:00Z"},
-            {"id": "2", "task_name": "task-2", "timestamp": "2026-03-20T10:05:00Z"}
+            {
+                "id": "1",
+                "task_name": "task-1",
+                "timestamp": "2026-03-20T10:00:00Z",
+                "checkpoint_metadata": {
+                    "version": "1.0",
+                    "compression": "gzip",
+                    "size_bytes": 1024
+                }
+            },
+            {
+                "id": "2",
+                "task_name": "task-2",
+                "timestamp": "2026-03-20T10:05:00Z",
+                "checkpoint_metadata": {
+                    "version": "1.0",
+                    "compression": "gzip",
+                    "size_bytes": 2048
+                }
+            }
         ]
     }
 
@@ -25,7 +43,12 @@ async def create_checkpoint(run_id: str, task_name: str, state_data: dict):
         "checkpoint_id": "new-checkpoint",
         "run_id": run_id,
         "task_name": task_name,
-        "saved": True
+        "saved": True,
+        "checkpoint_metadata": {
+            "version": "1.0",
+            "compression": "gzip",
+            "size_bytes": len(str(state_data))
+        }
     }
 
 
