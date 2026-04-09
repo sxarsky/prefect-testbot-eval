@@ -7,6 +7,9 @@
     "RequestHeaders": {
       "Content-Type": [
         "application/json"
+      ],
+      "Authorization": [
+        "SKYRAMP_PLACEHOLDER_TOKEN"
       ]
     },
     "ResponseHeaders": {
@@ -19,7 +22,7 @@
     "QueryParams": {},
     "StatusCode": 204,
     "Port": 4200,
-    "Timestamp": "2026-04-09T07:55:19.086Z",
+    "Timestamp": "2026-04-09T19:40:33.708Z",
     "Scheme": "http"
   },
   {
@@ -30,6 +33,9 @@
     "RequestHeaders": {
       "Content-Type": [
         "application/json"
+      ],
+      "Authorization": [
+        "SKYRAMP_PLACEHOLDER_TOKEN"
       ]
     },
     "ResponseHeaders": {
@@ -42,7 +48,7 @@
     "QueryParams": {},
     "StatusCode": 400,
     "Port": 4200,
-    "Timestamp": "2026-04-09T07:55:19.086Z",
+    "Timestamp": "2026-04-09T19:40:33.709Z",
     "Scheme": "http"
   }
 ]
