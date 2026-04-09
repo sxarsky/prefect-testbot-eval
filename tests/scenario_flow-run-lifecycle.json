@@ -1,0 +1,71 @@
+[
+  {
+    "Source": "192.168.65.1:39998",
+    "Destination": "localhost",
+    "RequestBody": "{\"name\": \"skyramp-lifecycle-flow\", \"tags\": [\"integration\", \"skyramp\"]}",
+    "ResponseBody": "{\"id\": \"b1a2c3d4-e5f6-7890-abcd-ef1234567890\", \"name\": \"skyramp-lifecycle-flow\", \"tags\": [\"integration\", \"skyramp\"]}",
+    "RequestHeaders": {
+      "Content-Type": [
+        "application/json"
+      ]
+    },
+    "ResponseHeaders": {
+      "Content-Type": [
+        "application/json"
+      ]
+    },
+    "Method": "POST",
+    "Path": "/api/flows/",
+    "QueryParams": {},
+    "StatusCode": 200,
+    "Port": 4200,
+    "Timestamp": "2026-04-09T19:41:11.374Z",
+    "Scheme": "http"
+  },
+  {
+    "Source": "192.168.65.1:39998",
+    "Destination": "localhost",
+    "RequestBody": "{\"flow_id\": \"b1a2c3d4-e5f6-7890-abcd-ef1234567890\", \"name\": \"skyramp-lifecycle-run\", \"tags\": [\"integration\"]}",
+    "ResponseBody": "{\"id\": \"a9b8c7d6-e5f4-3210-fedc-ba9876543210\", \"flow_id\": \"b1a2c3d4-e5f6-7890-abcd-ef1234567890\", \"name\": \"skyramp-lifecycle-run\", \"state\": {\"type\": \"SCHEDULED\", \"name\": \"Scheduled\"}}",
+    "RequestHeaders": {
+      "Content-Type": [
+        "application/json"
+      ]
+    },
+    "ResponseHeaders": {
+      "Content-Type": [
+        "application/json"
+      ]
+    },
+    "Method": "POST",
+    "Path": "/api/flow_runs/",
+    "QueryParams": {},
+    "StatusCode": 201,
+    "Port": 4200,
+    "Timestamp": "2026-04-09T19:41:11.374Z",
+    "Scheme": "http"
+  },
+  {
+    "Source": "192.168.65.1:39998",
+    "Destination": "localhost",
+    "RequestBody": "",
+    "ResponseBody": "{\"id\": \"a9b8c7d6-e5f4-3210-fedc-ba9876543210\", \"flow_id\": \"b1a2c3d4-e5f6-7890-abcd-ef1234567890\", \"name\": \"skyramp-lifecycle-run\", \"state\": {\"type\": \"SCHEDULED\", \"name\": \"Scheduled\"}}",
+    "RequestHeaders": {
+      "Content-Type": [
+        "application/json"
+      ]
+    },
+    "ResponseHeaders": {
+      "Content-Type": [
+        "application/json"
+      ]
+    },
+    "Method": "GET",
+    "Path": "/api/flow_runs/a9b8c7d6-e5f4-3210-fedc-ba9876543210",
+    "QueryParams": {},
+    "StatusCode": 200,
+    "Port": 4200,
+    "Timestamp": "2026-04-09T19:41:11.374Z",
+    "Scheme": "http"
+  }
+]
