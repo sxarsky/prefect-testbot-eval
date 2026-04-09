@@ -1,0 +1,18 @@
+PR_Number,Type,Title,Author,Date,Files_Changed,Lines_Added,Lines_Deleted,Test_Files,Source_Files,Scope_Description,Tier
+21443,BUGFIX,fix(engine): identity-verify run_results lookups for weakref-able objects,nate nowack,2026-04-08,4,292,9,1,3,Core engine fix with focused test coverage,Tier 1
+21436,BUGFIX,fix(schedules): persist explicit DTSTART on RRule schedules at write time,nate nowack,2026-04-07,12,504,37,9,3,Complex schedule fix with multi-system tests,Tier 2
+21365,BUGFIX,fix: set worker attribution env vars in the worker process itself,Zach Angell,2026-03-31,6,205,1,3,3,Worker attribution fix spanning integrations,Tier 2
+21356,BUGFIX,Fix deploy pull step for custom Docker images without build step,devin-ai-integration[bot],2026-03-31,3,216,1,2,1,Minimal targeted Docker fix,Tier 1
+21350,ENHANCEMENT,Add configurable parameter size limit for flow runs and deployments,devin-ai-integration[bot],2026-03-31,8,151,9,4,4,Cross-layer feature spanning multiple domains,Tier 2
+21354,ENHANCEMENT,Add exponential backoff retries for ECS task definition registration,devin-ai-integration[bot],2026-03-30,3,119,3,1,2,AWS-specific worker feature,Tier 2
+20951,ENHANCEMENT,Separate raise_on_lease_renewal_failure from strict in concurrency(),Adam Zionts,2026-03-27,6,160,8,1,5,Async/sync API duality,Tier 2
+21286,ENHANCEMENT,Add opt-in BuildKit/buildx support via python-on-whales,devin-ai-integration[bot],2026-03-27,13,1073,43,4,8,Large feature addition (Docker BuildKit),Tier 3
+21304,ENHANCEMENT,Add `with_context()` for logging from subprocesses,Alex Streed,2026-03-27,4,265,1,2,2,New logging API with focused tests,Tier 2
+21320,BUGFIX,Fix #21319: Skip dotenv_values when .env is not a regular file,devin-ai-integration[bot],2026-03-27,4,28,2,2,2,Tiny bugfix with great test ratio,Tier 1
+21307,ENHANCEMENT,Add `position` to block schema properties for UI field ordering,devin-ai-integration[bot],2026-03-27,3,132,29,2,1,Schema enhancement with clean tests,Tier 1
+21267,BUGFIX,Fix UnicodeDecodeError when subprocess outputs non-UTF-8 bytes,Krishna Chaitanya,2026-03-25,3,25,5,1,2,Encoding edge case minimal fix,Tier 1
+21273,BUGFIX,Fix EventsWorker class variable mutation and add `_on_item_dropped` for queue cleanup,devin-ai-integration[bot],2026-03-25,4,144,4,2,2,Concurrency/state management,Bonus
+21033,ENHANCEMENT,Add bounded queue support to QueueService to prevent OOM during server outages,Adam Zionts,2026-03-25,6,131,3,2,4,Cross-subsystem feature (events + settings),Bonus
+21252,ENHANCEMENT,Remove internal Runner usage from bundle execution and CLI paths,Alex Streed,2026-03-24,27,731,121,11,15,Massive architectural refactor,Tier 3
+21231,BUGFIX,Fix Jinja template parameter type coercion in RunDeployment actions,devin-ai-integration[bot],2026-03-23,4,201,7,2,2,Schema hydration bugfix,Bonus
+21211,ENHANCEMENT,Add pre-commit hook to prevent double backticks,Alex Streed,2026-03-20,26,81,76,6,20,Multi-integration enhancement,Bonus
