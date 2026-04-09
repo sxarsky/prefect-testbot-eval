@@ -44,6 +44,7 @@ def _schedule_config_to_deployment_schedule(
     schedule_active = schedule_config.get("active")
     parameters = schedule_config.get("parameters", {})
     slug = schedule_config.get("slug")
+    replaces = schedule_config.get("replaces")
 
     if cron := schedule_config.get("cron"):
         day_or = schedule_config.get("day_or")
@@ -52,8 +53,12 @@ def _schedule_config_to_deployment_schedule(
             **{k: v for k, v in cron_kwargs.items() if v is not None}
         )
     elif interval := schedule_config.get("interval"):
+        # interval can be int/float (seconds), timedelta, or ISO 8601 string
+        # IntervalSchedule's pydantic validation handles all these formats
+        if isinstance(interval, (int, float)):
+            interval = timedelta(seconds=interval)
         interval_kwargs = {
-            "interval": timedelta(seconds=interval),
+            "interval": interval,
             "anchor_date": parse_datetime(anchor_date) if anchor_date else None,
             "timezone": timezone,
         }
@@ -79,5 +84,7 @@ def _schedule_config_to_deployment_schedule(
         schedule_obj["parameters"] = parameters
     if slug:
         schedule_obj["slug"] = slug
+    if replaces:
+        schedule_obj["replaces"] = replaces
 
     return schedule_obj

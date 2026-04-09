@@ -149,7 +149,10 @@ class Deployment:
 
     # concurrency limiting
     concurrency_limit: int | None = None
-    concurrency_options: ConcurrencyOptions(collision_strategy=Literal['ENQUEUE', 'CANCEL_NEW']) | None = None
+    concurrency_options: ConcurrencyOptions(
+        collision_strategy=Literal['ENQUEUE', 'CANCEL_NEW'],
+        grace_period_seconds=int  # 60-86400, default 300
+    ) | None = None
 
     # metadata for bookkeeping
     version: str | None = None
@@ -251,10 +254,14 @@ Prefect supports managing concurrency at the deployment level to enable limiting
 deployment can be active at once. To enable this behavior, deployments have the following fields:
 
 - **`concurrency_limit`**: an integer that sets the maximum number of concurrent flow runs for the deployment.
-- **`collision_strategy`**: configure the behavior for runs once the concurrency limit is reached.
-Falls back to `ENQUEUE` if unset.
-  - `ENQUEUE`: new runs transition to `AwaitingConcurrencySlot` and execute as slots become available.
-  - `CANCEL_NEW`: new runs are canceled until a slot becomes available.
+- **`concurrency_options`**: an optional `ConcurrencyOptions` object to configure concurrency behavior:
+  - **`collision_strategy`**: configure the behavior for runs once the concurrency limit is reached.
+  Falls back to `ENQUEUE` if unset.
+    - `ENQUEUE`: new runs transition to `AwaitingConcurrencySlot` and execute as slots become available.
+    - `CANCEL_NEW`: new runs are canceled until a slot becomes available.
+  - **`grace_period_seconds`**: the time in seconds to allow infrastructure to start before the concurrency
+  slot is released. This is useful for deployments with slow-starting infrastructure. Must be between 60 and
+  86400 seconds. If not set, falls back to the server setting (default 300 seconds / 5 minutes).
 
 <CodeGroup>
 
@@ -273,7 +280,9 @@ my_flow.deploy(..., concurrency_limit=3)
 my_flow.deploy(
     ...,
     concurrency_limit=ConcurrencyLimitConfig(
-        limit=3, collision_strategy=ConcurrencyLimitStrategy.CANCEL_NEW
+        limit=3,
+        collision_strategy=ConcurrencyLimitStrategy.CANCEL_NEW,
+        grace_period_seconds=120,  # 2 minutes
     ),
 )
 ```
@@ -289,7 +298,9 @@ my_flow.serve(..., global_limit=3)
 my_flow.serve(
     ...,
     global_limit=ConcurrencyLimitConfig(
-        limit=3, collision_strategy=ConcurrencyLimitStrategy.CANCEL_NEW
+        limit=3,
+        collision_strategy=ConcurrencyLimitStrategy.CANCEL_NEW,
+        grace_period_seconds=120,  # 2 minutes
     ),
 )
 ```

@@ -29,7 +29,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
         with:
           persist-credentials: false
           fetch-depth: 0
@@ -37,7 +37,7 @@ jobs:
       - name: Install uv and set the python version
         uses: astral-sh/setup-uv@v7
         with:
-          python-version: "3.9"
+          python-version: "3.10"
           enable-cache: true
           cache-dependency-glob: "pyproject.toml"
 
@@ -64,7 +64,7 @@ jobs:
     name: Type Checks
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
         with:
           persist-credentials: false
           fetch-depth: 0
@@ -85,6 +85,6 @@ jobs:
 
       - name: Run pyright check
         run: >-
-          uv run pyright -p pyrightconfig-ci.json --level error
+          uv run pyright -p .github/pyrightconfig-ci.json --level error
 
 

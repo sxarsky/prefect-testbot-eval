@@ -171,6 +171,29 @@ In the build step example above, you relied on the `prefect-docker` package; in 
 additional required packages are auto-installed for you.
 </Note>
 
+<Tip>
+**Passing Docker build arguments**
+
+The `build_docker_image` step accepts any keyword arguments supported by the Docker Python SDK's [`build` method](https://docker-py.readthedocs.io/en/stable/images.html#docker.models.images.ImageCollection.build). This allows you to customize the Docker build process beyond the explicitly documented parameters.
+
+Common examples:
+
+```yaml
+build:
+  - prefect_docker.deployments.steps.build_docker_image:
+      image_name: my-repo/my-image
+      tag: my-tag
+      dockerfile: auto
+      nocache: true           # Disable Docker layer caching (--no-cache)
+      pull: true              # Always pull the latest base image
+      platform: linux/amd64   # Specify target platform
+      buildargs:              # Pass build-time variables
+        MY_ARG: value
+```
+
+Note: `ignore_cache` is a separate parameter that controls **Prefect's step-level caching** (whether to reuse the entire build step result across `prefect deploy --all` runs), not Docker's layer caching.
+</Tip>
+
 **Pass output to downstream steps**
 
 Each deployment action can be composed of multiple steps. For example, to build a Docker image tagged with the
@@ -632,7 +655,7 @@ These are fields you can add to each deployment declaration.
 | `tags`                                     | A list of strings to assign to the deployment as tags.                                                                                                                                                                                                                                   |
 | <span class="no-wrap">`description`</span> | An optional description for the deployment.                                                                                                                                                                                                                                              |
 | `schedule`                                 | An optional [schedule](/v3/how-to-guides/deployments/create-schedules) to assign to the deployment. Fields for this section are documented in the [Schedule Fields](#schedule-fields) section.                                                                                                                      |
-| `concurrency_limit`                        | An optional [deployment concurrency limit](/v3/deploy/index#concurrency-limiting). Fields for this section are documented in the [Concurrency Limit Fields](#concurrency-limit-fields) section.                                                                                                                      |
+| `concurrency_limit`                        | An optional [deployment concurrency limit](/v3/concepts/deployments#concurrency-limiting). Set to an integer for a simple limit, or use the [Concurrency Limit Fields](#concurrency-limit-fields) for additional options like collision strategy and grace period.                                                                                                                      |
 | `triggers`                                  | An optional array of [triggers](/v3/how-to-guides/automations/creating-deployment-triggers) to assign to the deployment |
 | `entrypoint`                               | Required path to the `.py` file containing the flow you want to deploy (relative to the root directory of your development folder) combined with the name of the flow function. In the format `path/to/file.py:flow_function_name`. |
 | `parameters`                               | Optional default values to provide for the parameters of the deployed flow. Should be an object with key/value pairs.                                                                                                                                                                    |
@@ -645,7 +668,7 @@ These are fields you can add to a deployment declaration's `schedule` section.
 
 | Property                                   | Description                                                                                                                                                                                                            |
 | ------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `interval`                                 | Number of seconds indicating the time between flow runs. Cannot use them in conjunction with `cron` or `rrule`.                                                                                                         |
+| `interval`                                 | Time between flow runs. Accepts an integer (seconds), ISO 8601 duration string (e.g., `PT10M`, `PT1H30M`, `P1D`), or time format string (e.g., `1:30:00`). Cannot use in conjunction with `cron` or `rrule`.             |
 | <span class="no-wrap">`anchor_date`</span> | Datetime string indicating the starting or "anchor" date to begin the schedule. If no `anchor_date` is supplied, the current UTC time is used. Can only use with `interval`.                                       |
 | `timezone`                                 | String name of a time zone, used to enforce localization behaviors like DST boundaries. See the [IANA Time Zone Database](https://www.iana.org/time-zones) for valid time zones.                                       |
 | `cron`                                     | A valid cron string. Cannot use in conjunction with `interval` or `rrule`.                                                                                                                                         |
@@ -654,12 +677,31 @@ These are fields you can add to a deployment declaration's `schedule` section.
 
 ### Concurrency limit fields
 
-These are fields you can add to a deployment declaration's `concurrency_limit` section.
+The `concurrency_limit` field accepts either a simple integer or a section with additional options:
+
+```yaml
+deployments:
+  # Simple integer form:
+  - name: my-deployment
+    concurrency_limit: 5
+    ...
+
+  # Detailed form with collision strategy and grace period:
+  - name: my-other-deployment
+    concurrency_limit:
+      limit: 5
+      collision_strategy: CANCEL_NEW
+      grace_period_seconds: 120
+    ...
+```
+
+When using the detailed form, these are the available fields:
 
 | Property                                   | Description                                                                                                                                                                                                            |
 | ------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `limit`                                    | The maximum number of concurrent flow runs for the deployment.                                                                                                                                                 |
-| `collision_strategy`                       | Configure the behavior for runs once the concurrency limit is reached. Options are `ENQUEUE`, and `CANCEL_NEW`. Defaults to `ENQUEUE`.                                                                                 |
+| `collision_strategy`                       | Configure the behavior for runs once the concurrency limit is reached. Options are `ENQUEUE` and `CANCEL_NEW`. Defaults to `ENQUEUE`.                                                                                 |
+| `grace_period_seconds`                     | The time in seconds to allow infrastructure to start before the concurrency slot is released. Must be between 60 and 86400 seconds. If not set, falls back to the server setting (default 300 seconds / 5 minutes). |
 
 
 ### Work pool fields

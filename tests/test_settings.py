@@ -129,6 +129,10 @@ SUPPORTED_SETTINGS = {
         "test_value": 100,
         "legacy": True,
     },
+    "PREFECT_API_SERVICES_EVENT_PERSISTER_READ_BATCH_SIZE": {
+        "test_value": 10,
+        "legacy": True,
+    },
     "PREFECT_API_SERVICES_EVENT_PERSISTER_ENABLED": {
         "test_value": True,
         "legacy": True,
@@ -216,6 +220,7 @@ SUPPORTED_SETTINGS = {
     "PREFECT_CLI_WRAP_LINES": {"test_value": True},
     "PREFECT_CLOUD_API_URL": {"test_value": "https://cloud.prefect.io"},
     "PREFECT_CLOUD_ENABLE_ORCHESTRATION_TELEMETRY": {"test_value": True},
+    "PREFECT_CLOUD_MAX_LOG_SIZE": {"test_value": 25_000},
     "PREFECT_CLOUD_UI_URL": {"test_value": "https://cloud.prefect.io"},
     "PREFECT_DEBUG_MODE": {"test_value": True},
     "PREFECT_DEFAULT_DOCKER_BUILD_NAMESPACE": {"test_value": "prefect", "legacy": True},
@@ -301,7 +306,9 @@ SUPPORTED_SETTINGS = {
     "PREFECT_RESULTS_DEFAULT_STORAGE_BLOCK": {"test_value": "block"},
     "PREFECT_RESULTS_LOCAL_STORAGE_PATH": {"test_value": Path("/path/to/storage")},
     "PREFECT_RESULTS_PERSIST_BY_DEFAULT": {"test_value": True},
-    "PREFECT_RUNNER_HEARTBEAT_FREQUENCY": {"test_value": 30},
+    "PREFECT_RUNNER_CRASH_ON_CANCELLATION_FAILURE": {"test_value": True},
+    "PREFECT_FLOWS_HEARTBEAT_FREQUENCY": {"test_value": 30},
+    "PREFECT_RUNNER_HEARTBEAT_FREQUENCY": {"test_value": 30, "legacy": True},
     "PREFECT_RUNNER_POLL_FREQUENCY": {"test_value": 10},
     "PREFECT_RUNNER_PROCESS_LIMIT": {"test_value": 10},
     "PREFECT_RUNNER_SERVER_ENABLE": {"test_value": True},
@@ -328,6 +335,9 @@ SUPPORTED_SETTINGS = {
     "PREFECT_SERVER_CONCURRENCY_INITIAL_DEPLOYMENT_LEASE_DURATION": {
         "test_value": 120.0
     },
+    "PREFECT_SERVER_CONCURRENCY_MAXIMUM_CONCURRENCY_SLOT_WAIT_SECONDS": {
+        "test_value": 60.0
+    },
     "PREFECT_SERVER_CORS_ALLOWED_HEADERS": {"test_value": "foo", "legacy": True},
     "PREFECT_SERVER_CORS_ALLOWED_METHODS": {"test_value": "foo", "legacy": True},
     "PREFECT_SERVER_CORS_ALLOWED_ORIGINS": {"test_value": "foo", "legacy": True},
@@ -351,6 +361,9 @@ SUPPORTED_SETTINGS = {
     "PREFECT_SERVER_DATABASE_SQLALCHEMY_CONNECT_ARGS_PREPARED_STATEMENT_CACHE_SIZE": {
         "test_value": 1
     },
+    "PREFECT_SERVER_DATABASE_SQLALCHEMY_CONNECT_ARGS_SEARCH_PATH": {
+        "test_value": "myschema"
+    },
     "PREFECT_SERVER_DATABASE_SQLALCHEMY_CONNECT_ARGS_STATEMENT_CACHE_SIZE": {
         "test_value": 1
     },
@@ -371,6 +384,8 @@ SUPPORTED_SETTINGS = {
     "PREFECT_SERVER_DATABASE_USER": {"test_value": "user"},
     "PREFECT_SERVER_DEPLOYMENTS_CONCURRENCY_SLOT_WAIT_SECONDS": {"test_value": 10.0},
     "PREFECT_SERVER_DEPLOYMENT_SCHEDULE_MAX_SCHEDULED_RUNS": {"test_value": 10},
+    "PREFECT_SERVER_DOCKET_NAME": {"test_value": "test-docket"},
+    "PREFECT_SERVER_DOCKET_URL": {"test_value": "redis://localhost:6379/0"},
     "PREFECT_SERVER_EPHEMERAL_ENABLED": {"test_value": True},
     "PREFECT_SERVER_EPHEMERAL_STARTUP_TIMEOUT_SECONDS": {"test_value": 10},
     "PREFECT_SERVER_EVENTS_CAUSAL_ORDERING": {
@@ -410,8 +425,11 @@ SUPPORTED_SETTINGS = {
     "PREFECT_SERVER_SERVICES_EVENT_LOGGER_ENABLED": {"test_value": True},
     "PREFECT_SERVER_SERVICES_EVENT_PERSISTER_BATCH_SIZE": {"test_value": 10},
     "PREFECT_SERVER_SERVICES_EVENT_PERSISTER_BATCH_SIZE_DELETE": {"test_value": 20},
+    "PREFECT_SERVER_SERVICES_EVENT_PERSISTER_READ_BATCH_SIZE": {"test_value": 10},
     "PREFECT_SERVER_SERVICES_EVENT_PERSISTER_ENABLED": {"test_value": True},
     "PREFECT_SERVER_SERVICES_EVENT_PERSISTER_FLUSH_INTERVAL": {"test_value": 10.0},
+    "PREFECT_SERVER_SERVICES_EVENT_PERSISTER_MAX_FLUSH_RETRIES": {"test_value": 3},
+    "PREFECT_SERVER_SERVICES_EVENT_PERSISTER_QUEUE_MAX_SIZE": {"test_value": 10000},
     "PREFECT_SERVER_SERVICES_FOREMAN_DEPLOYMENT_LAST_POLLED_TIMEOUT_SECONDS": {
         "test_value": 10
     },
@@ -449,7 +467,11 @@ SUPPORTED_SETTINGS = {
         "test_value": timedelta(minutes=10)
     },
     "PREFECT_SERVER_SERVICES_TASK_RUN_RECORDER_ENABLED": {"test_value": True},
+    "PREFECT_SERVER_SERVICES_TASK_RUN_RECORDER_BATCH_SIZE": {"test_value": 1},
+    "PREFECT_SERVER_SERVICES_TASK_RUN_RECORDER_FLUSH_INTERVAL": {"test_value": 1.0},
+    "PREFECT_SERVER_SERVICES_TASK_RUN_RECORDER_READ_BATCH_SIZE": {"test_value": 1},
     "PREFECT_SERVER_SERVICES_TRIGGERS_ENABLED": {"test_value": True},
+    "PREFECT_SERVER_SERVICES_TRIGGERS_READ_BATCH_SIZE": {"test_value": 1},
     "PREFECT_SERVER_SERVICES_TRIGGERS_PG_NOTIFY_HEARTBEAT_INTERVAL_SECONDS": {
         "test_value": 5
     },
@@ -468,7 +490,9 @@ SUPPORTED_SETTINGS = {
     "PREFECT_SERVER_UI_API_URL": {"test_value": "https://api.prefect.io"},
     "PREFECT_SERVER_UI_ENABLED": {"test_value": True},
     "PREFECT_SERVER_UI_SERVE_BASE": {"test_value": "/base"},
+    "PREFECT_SERVER_UI_SHOW_PROMOTIONAL_CONTENT": {"test_value": False},
     "PREFECT_SERVER_UI_STATIC_DIRECTORY": {"test_value": "/path/to/static"},
+    "PREFECT_SERVER_UI_V2_ENABLED": {"test_value": True},
     "PREFECT_SILENCE_API_URL_MISCONFIGURATION": {"test_value": True},
     "PREFECT_SQLALCHEMY_MAX_OVERFLOW": {"test_value": 10, "legacy": True},
     "PREFECT_SQLALCHEMY_POOL_SIZE": {"test_value": 10, "legacy": True},
@@ -518,6 +542,8 @@ SUPPORTED_SETTINGS = {
     "PREFECT_UI_URL": {"test_value": "https://ui.prefect.io"},
     "PREFECT_UNIT_TEST_LOOP_DEBUG": {"test_value": True, "legacy": True},
     "PREFECT_UNIT_TEST_MODE": {"test_value": True, "legacy": True},
+    "PREFECT_WORKER_CANCELLATION_POLL_SECONDS": {"test_value": 60.0},
+    "PREFECT_WORKER_ENABLE_CANCELLATION": {"test_value": True},
     "PREFECT_WORKER_HEARTBEAT_SECONDS": {"test_value": 10.0},
     "PREFECT_WORKER_PREFETCH_SECONDS": {"test_value": 10.0},
     "PREFECT_WORKER_QUERY_SECONDS": {"test_value": 10.0},
@@ -660,7 +686,11 @@ class TestSettingsClass:
         ).to_environment_variables(exclude_unset=True) == {
             # From env
             **{
-                var: os.environ[var] for var in os.environ if var.startswith("PREFECT_")
+                var: os.environ[var]
+                for var in os.environ
+                if var.startswith("PREFECT_")
+                # PREFECT_CLI_FAST is an internal migration toggle, not a setting
+                and var != "PREFECT_CLI_FAST"
             },
             # From test settings
             "PREFECT_SERVER_LOGGING_LEVEL": "DEBUG",
@@ -851,6 +881,41 @@ class TestSettingsClass:
         ), (
             "valid_setting_names output did not match supported settings. Please update SUPPORTED_SETTINGS if you are adding or removing a setting."
         )
+
+    @pytest.mark.usefixtures("disable_hosted_api_server")
+    def test_connected_to_cloud_true_when_api_url_matches_cloud(self):
+        with temporary_settings(
+            updates={PREFECT_API_URL: "https://api.prefect.cloud/api"}
+        ) as settings:
+            assert settings.connected_to_cloud is True
+
+    @pytest.mark.usefixtures("disable_hosted_api_server")
+    def test_connected_to_cloud_true_with_accounts_subdomain(self):
+        with temporary_settings(
+            updates={
+                PREFECT_API_URL: "https://api.prefect.cloud/api/accounts/foo/workspaces/bar"
+            }
+        ) as settings:
+            assert settings.connected_to_cloud is True
+
+    @pytest.mark.usefixtures("disable_hosted_api_server")
+    def test_connected_to_cloud_false_for_self_hosted(self):
+        with temporary_settings(
+            updates={PREFECT_API_URL: "http://localhost:4200/api"}
+        ) as settings:
+            assert settings.connected_to_cloud is False
+
+    @pytest.mark.usefixtures("disable_hosted_api_server")
+    def test_connected_to_cloud_false_when_no_api_url(self):
+        with temporary_settings(restore_defaults={PREFECT_API_URL}) as settings:
+            assert settings.connected_to_cloud is False
+
+    @pytest.mark.usefixtures("disable_hosted_api_server")
+    def test_connected_to_cloud_false_with_different_domain(self):
+        with temporary_settings(
+            updates={PREFECT_API_URL: "https://example.com/api"}
+        ) as settings:
+            assert settings.connected_to_cloud is False
 
 
 class TestSettingAccess:
@@ -1079,6 +1144,38 @@ class TestSettingAccess:
 
         assert isinstance(PREFECT_CLIENT_ENABLE_METRICS, Setting)
         assert isinstance(PREFECT_CLIENT_METRICS_ENABLED, Setting)
+
+    def test_heartbeat_frequency_legacy_env_var_alias(
+        self, monkeypatch: pytest.MonkeyPatch
+    ):
+        """Test that PREFECT_RUNNER_HEARTBEAT_FREQUENCY still works as an alias."""
+        # Test with legacy env var
+        monkeypatch.setenv("PREFECT_RUNNER_HEARTBEAT_FREQUENCY", "60")
+        settings = Settings()
+        assert settings.flows.heartbeat_frequency == 60
+
+        # Cleanup and test with new env var
+        monkeypatch.delenv("PREFECT_RUNNER_HEARTBEAT_FREQUENCY", raising=False)
+        monkeypatch.setenv("PREFECT_FLOWS_HEARTBEAT_FREQUENCY", "90")
+        settings = Settings()
+        assert settings.flows.heartbeat_frequency == 90
+
+    def test_deprecated_runner_heartbeat_frequency_access(self):
+        """Test that accessing runner.heartbeat_frequency emits deprecation warning."""
+        settings = Settings()
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+
+            # Access the deprecated attribute
+            value = settings.runner.heartbeat_frequency
+
+            assert len(w) == 1
+            assert issubclass(w[-1].category, DeprecationWarning)
+            assert "runner.heartbeat_frequency" in str(w[-1].message)
+            assert "flows.heartbeat_frequency" in str(w[-1].message)
+
+        # The value should equal the flows setting
+        assert value == settings.flows.heartbeat_frequency
 
 
 class TestDatabaseSettings:
@@ -1336,6 +1433,21 @@ class TestDatabaseSettings:
         ):
             assert settings.server.database.sqlalchemy_pool_size == 42
             assert settings.server.database.sqlalchemy_max_overflow == 37
+
+    def test_search_path_setting_is_accessible(self, monkeypatch):
+        """Test that the search_path setting can be set and accessed."""
+        monkeypatch.setenv(
+            "PREFECT_SERVER_DATABASE_SQLALCHEMY_CONNECT_ARGS_SEARCH_PATH", "myschema"
+        )
+        settings = Settings()
+        assert (
+            settings.server.database.sqlalchemy.connect_args.search_path == "myschema"
+        )
+
+    def test_search_path_setting_defaults_to_none(self):
+        """Test that the search_path setting defaults to None."""
+        settings = Settings()
+        assert settings.server.database.sqlalchemy.connect_args.search_path is None
 
 
 class TestTemporarySettings:
@@ -2086,13 +2198,13 @@ class TestProfile:
     def test_validate_settings_nested_field_constraints(self):
         """
         Test that nested field constraints are properly validated.
-        Regression test for issue #18258: PREFECT_RUNNER_HEARTBEAT_FREQUENCY validation.
+        Regression test for issue #18258: PREFECT_FLOWS_HEARTBEAT_FREQUENCY validation.
         """
-        from prefect.settings import PREFECT_RUNNER_HEARTBEAT_FREQUENCY
+        from prefect.settings import PREFECT_FLOWS_HEARTBEAT_FREQUENCY
 
         # Test invalid value (< 30)
         profile = Profile(
-            name="test", settings={PREFECT_RUNNER_HEARTBEAT_FREQUENCY: "5"}
+            name="test", settings={PREFECT_FLOWS_HEARTBEAT_FREQUENCY: "5"}
         )
         with pytest.raises(
             ProfileSettingsValidationError,
@@ -2102,7 +2214,7 @@ class TestProfile:
 
         # Test valid value (>= 30)
         profile = Profile(
-            name="test", settings={PREFECT_RUNNER_HEARTBEAT_FREQUENCY: "40"}
+            name="test", settings={PREFECT_FLOWS_HEARTBEAT_FREQUENCY: "40"}
         )
         # Should not raise
         profile.validate_settings()

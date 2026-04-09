@@ -3,7 +3,7 @@ import logging
 import socket
 import sqlite3
 import sys
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
 import asyncpg
@@ -36,9 +36,9 @@ from prefect.settings import (
     PREFECT_SERVER_CORS_ALLOWED_HEADERS,
     PREFECT_SERVER_CORS_ALLOWED_METHODS,
     PREFECT_SERVER_CORS_ALLOWED_ORIGINS,
+    PREFECT_SERVER_DOCKET_NAME,
     temporary_settings,
 )
-from prefect.testing.utilities import AsyncMock
 
 
 async def test_validation_error_handler_422(client):
@@ -94,7 +94,10 @@ async def test_sqlite_database_locked_handler(errorname, ephemeral):
             Exception,
         )
 
-    app = create_app(ephemeral=ephemeral, ignore_cache=True)
+    with temporary_settings(
+        {PREFECT_SERVER_DOCKET_NAME: f"test-docket-{uuid4().hex[:8]}"}
+    ):
+        app = create_app(ephemeral=ephemeral, ignore_cache=True)
     app.api_app.add_api_route("/raise_busy_error", raise_busy_error)
     app.api_app.add_api_route("/raise_other_error", raise_other_error)
 
@@ -109,13 +112,13 @@ async def test_sqlite_database_locked_handler(errorname, ephemeral):
         assert response.status_code == 500
 
 
-def _log_record_for_sqlite_error(orig_exc):
+def _log_record_for_sqlite_error(orig_exc, logger_name: str = "uvicorn.error"):
     try:
         raise sa.exc.OperationalError("statement", {"params": 1}, orig_exc, None)
     except sa.exc.OperationalError:
         exc_info = sys.exc_info()
     return logging.LogRecord(
-        name="uvicorn.error",
+        name=logger_name,
         level=logging.ERROR,
         pathname=__file__,
         lineno=1,
@@ -175,6 +178,24 @@ def test_sqlite_locked_log_filter_ignores_non_operational_errors():
         assert filter_.filter(record) is True
 
 
+def test_sqlite_locked_log_filter_works_for_docket_worker_logger():
+    """Test that the filter also suppresses SQLite lock errors from docket.worker logger.
+
+    This is important because docket background tasks (like mark_deployments_ready)
+    can hit SQLite locking issues and log errors through the docket.worker logger.
+    See: https://github.com/PrefectHQ/prefect/issues/19771
+    """
+    filter_ = _SQLiteLockedOperationalErrorFilter()
+    orig_exc = sqlite3.OperationalError(SQLITE_LOCKED_MSG)
+    record = _log_record_for_sqlite_error(orig_exc, logger_name="docket.worker")
+
+    with temporary_settings({PREFECT_API_LOG_RETRYABLE_ERRORS: False}):
+        assert filter_.filter(record) is False
+
+    with temporary_settings({PREFECT_API_LOG_RETRYABLE_ERRORS: True}):
+        assert filter_.filter(record) is True
+
+
 @pytest.mark.parametrize(
     "exc",
     (
@@ -193,7 +214,10 @@ async def test_retryable_exception_handler(exc):
     async def raise_other_error():
         raise ValueError()
 
-    app = create_app(ephemeral=True, ignore_cache=True)
+    with temporary_settings(
+        {PREFECT_SERVER_DOCKET_NAME: f"test-docket-{uuid4().hex[:8]}"}
+    ):
+        app = create_app(ephemeral=True, ignore_cache=True)
     app.api_app.add_api_route("/raise_retryable_error", raise_retryable_error)
     app.api_app.add_api_route("/raise_other_error", raise_other_error)
 
