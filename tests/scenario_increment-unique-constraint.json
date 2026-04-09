@@ -1,0 +1,48 @@
+[
+  {
+    "Source": "192.168.65.1:39998",
+    "Destination": "localhost",
+    "RequestBody": "{\"names\":[\"test-tag-1234567890\"],\"task_run_id\":\"a1b2c3d4-e5f6-7890-abcd-ef1234567890\"}",
+    "ResponseBody": "{\"response\":[{\"id\":\"a1b2c3d4-e5f6-7890-abcd-ef1234567890\",\"name\":\"test-tag-1234567890\",\"limit\":5,\"active_slots\":0}]}",
+    "RequestHeaders": {
+      "Content-Type": [
+        "application/json"
+      ]
+    },
+    "ResponseHeaders": {
+      "Content-Type": [
+        "application/json"
+      ]
+    },
+    "Method": "POST",
+    "Path": "/api/concurrency_limits/increment",
+    "QueryParams": {},
+    "StatusCode": 201,
+    "Port": 4200,
+    "Timestamp": "2026-04-09T18:30:36.552Z",
+    "Scheme": "http"
+  },
+  {
+    "Source": "192.168.65.1:39998",
+    "Destination": "localhost",
+    "RequestBody": "{\"names\":[\"test-tag-1234567890\"],\"task_run_id\":\"a1b2c3d4-e5f6-7890-abcd-ef1234567890\"}",
+    "ResponseBody": "{\"detail\":\"Conflict\"}",
+    "RequestHeaders": {
+      "Content-Type": [
+        "application/json"
+      ]
+    },
+    "ResponseHeaders": {
+      "Content-Type": [
+        "application/json"
+      ]
+    },
+    "Method": "POST",
+    "Path": "/api/concurrency_limits/increment",
+    "QueryParams": {},
+    "StatusCode": 409,
+    "Port": 4200,
+    "Timestamp": "2026-04-09T18:30:36.552Z",
+    "Scheme": "http"
+  }
+]
