@@ -1,0 +1,106 @@
+[
+  {
+    "Source": "192.168.65.1:39998",
+    "Destination": "localhost",
+    "RequestBody": "{\"name\": \"test-flow-duration-fields\"}",
+    "ResponseBody": "{\"id\": \"3fa85f64-5717-4562-b3fc-2c963f66afa6\", \"name\": \"test-flow-duration-fields\", \"created\": \"2024-01-01T00:00:00Z\", \"updated\": \"2024-01-01T00:00:00Z\"}",
+    "RequestHeaders": {
+      "Content-Type": [
+        "application/json"
+      ],
+      "Authorization": [
+        "SKYRAMP_PLACEHOLDER_TOKEN"
+      ]
+    },
+    "ResponseHeaders": {
+      "Content-Type": [
+        "application/json"
+      ]
+    },
+    "Method": "POST",
+    "Path": "/api/flows/",
+    "QueryParams": {},
+    "StatusCode": 201,
+    "Port": 4200,
+    "Timestamp": "2026-04-09T19:42:13.999Z",
+    "Scheme": "http"
+  },
+  {
+    "Source": "192.168.65.1:39998",
+    "Destination": "localhost",
+    "RequestBody": "{\"flow_id\": \"3fa85f64-5717-4562-b3fc-2c963f66afa6\", \"name\": \"test-flow-run-duration-fields\"}",
+    "ResponseBody": "{\"id\": \"4fa85f64-5717-4562-b3fc-2c963f66afa6\", \"flow_id\": \"3fa85f64-5717-4562-b3fc-2c963f66afa6\", \"name\": \"test-flow-run-duration-fields\", \"state_type\": \"SCHEDULED\", \"created\": \"2024-01-01T00:00:00Z\", \"updated\": \"2024-01-01T00:00:00Z\"}",
+    "RequestHeaders": {
+      "Content-Type": [
+        "application/json"
+      ],
+      "Authorization": [
+        "SKYRAMP_PLACEHOLDER_TOKEN"
+      ]
+    },
+    "ResponseHeaders": {
+      "Content-Type": [
+        "application/json"
+      ]
+    },
+    "Method": "POST",
+    "Path": "/api/flow_runs/",
+    "QueryParams": {},
+    "StatusCode": 201,
+    "Port": 4200,
+    "Timestamp": "2026-04-09T19:42:13.999Z",
+    "Scheme": "http"
+  },
+  {
+    "Source": "192.168.65.1:39998",
+    "Destination": "localhost",
+    "RequestBody": "{\"flow_run_id\": \"4fa85f64-5717-4562-b3fc-2c963f66afa6\", \"task_key\": \"test-task-duration\", \"dynamic_key\": \"0\", \"name\": \"test-task-run-duration\"}",
+    "ResponseBody": "{\"id\": \"5fa85f64-5717-4562-b3fc-2c963f66afa6\", \"flow_run_id\": \"4fa85f64-5717-4562-b3fc-2c963f66afa6\", \"task_key\": \"test-task-duration\", \"dynamic_key\": \"0\", \"name\": \"test-task-run-duration\", \"total_run_time\": 0.0, \"estimated_run_time\": 0.0, \"estimated_start_time_delta\": 0.0, \"created\": \"2024-01-01T00:00:00Z\", \"updated\": \"2024-01-01T00:00:00Z\"}",
+    "RequestHeaders": {
+      "Content-Type": [
+        "application/json"
+      ],
+      "Authorization": [
+        "SKYRAMP_PLACEHOLDER_TOKEN"
+      ]
+    },
+    "ResponseHeaders": {
+      "Content-Type": [
+        "application/json"
+      ]
+    },
+    "Method": "POST",
+    "Path": "/api/task_runs/",
+    "QueryParams": {},
+    "StatusCode": 201,
+    "Port": 4200,
+    "Timestamp": "2026-04-09T19:42:13.999Z",
+    "Scheme": "http"
+  },
+  {
+    "Source": "192.168.65.1:39998",
+    "Destination": "localhost",
+    "RequestBody": "{\"page\": 1, \"limit\": 10}",
+    "ResponseBody": "{\"results\": [{\"id\": \"5fa85f64-5717-4562-b3fc-2c963f66afa6\", \"name\": \"test-task-run-duration\", \"total_run_time\": 0.0, \"estimated_run_time\": 0.0, \"estimated_start_time_delta\": 0.0}], \"count\": 1, \"limit\": 10, \"pages\": 1, \"page\": 1}",
+    "RequestHeaders": {
+      "Content-Type": [
+        "application/json"
+      ],
+      "Authorization": [
+        "SKYRAMP_PLACEHOLDER_TOKEN"
+      ]
+    },
+    "ResponseHeaders": {
+      "Content-Type": [
+        "application/json"
+      ]
+    },
+    "Method": "POST",
+    "Path": "/api/task_runs/paginate",
+    "QueryParams": {},
+    "StatusCode": 200,
+    "Port": 4200,
+    "Timestamp": "2026-04-09T19:42:13.999Z",
+    "Scheme": "http"
+  }
+]
