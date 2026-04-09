@@ -1,0 +1,3 @@
+tests/cli/test_deploy.py
+tests/docker/test_registry_pushes.py
+tests/server/orchestration/api/test_deployments.py

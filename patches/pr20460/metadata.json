@@ -1,0 +1,8 @@
+{
+    "pr_number": 20460,
+    "title": "Add `replaces` field for renaming schedule slugs",
+    "merge_commit": "ca9ea0cf8bbec849adce295a16cdbfb136eb5aff",
+    "merged_at": "2026-02-12T18:51:31Z",
+    "upstream_repo": "PrefectHQ/prefect",
+    "extracted_at": "2026-04-09T06:02:16Z"
+}

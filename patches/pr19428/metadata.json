@@ -1,0 +1,8 @@
+{
+    "pr_number": 19428,
+    "title": "fix: cap retry-after for concurrency limits to prevent excessive delays",
+    "merge_commit": "144cdba00ccee55b1c252f80268ebdf73356dfcd",
+    "merged_at": "2025-11-13T00:24:25Z",
+    "upstream_repo": "PrefectHQ/prefect",
+    "extracted_at": "2026-04-09T06:02:18Z"
+}

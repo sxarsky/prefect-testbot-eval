@@ -1,0 +1,703 @@
+diff --git a/AGENTS.md b/AGENTS.md
+index d788c3be6..889245a48 100644
+--- a/AGENTS.md
++++ b/AGENTS.md
+@@ -49,6 +49,34 @@ prefect config view            # Inspect configuration
+ - Use `uv` for dependency management, not `pip`
+ - Do not use deferred imports (imports inside functions) unless absolutely necessary to avoid circular imports or for optional dependencies
+ 
++### Logging
++
++Always use Prefect's logging utilities from `prefect.logging` instead of raw `logging.getLogger()`. Prefect's `get_logger()` adds API key obfuscation and places loggers under the `"prefect."` namespace automatically.
++
++**Which logger to use:**
++
++| Context | Function | Import |
++|---|---|---|
++| Anywhere outside a flow/task run | `get_logger()` | `from prefect.logging import get_logger` |
++| Inside a `@flow` or `@task` function | `get_run_logger()` | `from prefect.logging import get_run_logger` |
++| Worker implementations | `get_worker_logger()` | `from prefect.logging import get_worker_logger` |
++
++**Logger naming conventions:**
++- SDK core modules use short area names: `get_logger("flows")`, `get_logger("engine")`, `get_logger("tasks")`
++- Server, client, CLI, and integration code use `__name__`: `get_logger(__name__)`
++
++**When raw `logging.getLogger()` is acceptable:**
++- Inside `src/prefect/logging/` itself (avoiding circular imports)
++- Configuring third-party library loggers (e.g., uvicorn, sqlalchemy)
++
++**Run loggers and the API log pipeline:**
++
++The `prefect.flow_runs` and `prefect.task_runs` loggers have an `APILogHandler` (configured in `logging.yml`) that batches log records and sends them to `POST /logs/`. `flow_run_logger()` and `task_run_logger()` return a `PrefectLogAdapter` wrapping these loggers, attaching run metadata (`flow_run_id`, `task_run_id`, names) to every record so the API can associate logs with specific runs.
++
++- **Flow/task engines** (`flow_engine.py`, `task_engine.py`) run user code. During `setup_run_context()` they call `flow_run_logger()` / `task_run_logger()` to create the logger available via `get_run_logger()` inside `@flow` and `@task` functions. These logs are sent to the API.
++- **Workers** (`workers/base.py`) use `get_worker_logger(self)` for general logging (not sent to API). For per-run logging they call `flow_run_logger(flow_run).getChild("worker", extra={...})`, which inherits the `APILogHandler` and attaches worker context (`worker_name`, `work_pool_name`, `worker_id`).
++- **Runners** (`runner/runner.py`) use `get_logger("runner")` for general logging (not sent to API). For per-run logging they call `flow_run_logger(flow_run).getChild("runner", extra={"runner_name": ...})`.
++
+ ### Testing
+ 
+ - Directory structure mirrors source code
+diff --git a/docs/v3/how-to-guides/deployments/create-schedules.mdx b/docs/v3/how-to-guides/deployments/create-schedules.mdx
+index 01d65d282..e98262880 100644
+--- a/docs/v3/how-to-guides/deployments/create-schedules.mdx
++++ b/docs/v3/how-to-guides/deployments/create-schedules.mdx
+@@ -158,6 +158,37 @@ deployments:
+       active: true
+ ```
+ 
++### Renaming schedule slugs
++
++If you need to rename a schedule's slug, use the `replaces` field to indicate which existing schedule should be updated:
++
++```yaml
++deployments:
++  - name: send-emails
++    entrypoint: flows.py:send_email
++    schedules:
++      - cron: "0 8 * * *"
++        slug: "daily-team-digest"    # The new slug
++        replaces: "morning-emails"   # The old slug being replaced
++        parameters:
++          to: "team@company.com"
++```
++
++When you run `prefect deploy`:
++- The existing schedule with slug "morning-emails" will be updated
++- Its slug will change to "daily-team-digest"
++- No new schedule is created, and no orphaned schedule remains
++
++After a successful deploy, you can remove the `replaces` field from your YAML - it becomes a no-op once the old slug no longer exists.
++
++<Note>
++If `replaces` points to a slug that doesn't exist, the schedule will be created normally and a warning will be logged.
++</Note>
++
++<Warning>
++Two schedules cannot have `replaces` pointing to the same slug. This will result in a validation error.
++</Warning>
++
+ ### Create schedules with Terraform
+ 
+ import { TF } from "/snippets/resource-management/terraform.mdx"
+diff --git a/src/prefect/cli/deploy/_models.py b/src/prefect/cli/deploy/_models.py
+index 1bf13413e..75f784bfc 100644
+--- a/src/prefect/cli/deploy/_models.py
++++ b/src/prefect/cli/deploy/_models.py
+@@ -125,6 +125,7 @@ class RawScheduleConfig(BaseModel):
+     active: Optional[Union[bool, str]] = None  # Allow string for template values
+     parameters: Dict[str, Any] = Field(default_factory=dict)
+     slug: Optional[str] = None
++    replaces: Optional[str] = None  # The slug of an existing schedule to replace
+ 
+     # Cron-specific
+     day_or: Optional[Union[bool, str]] = None  # Allow string for template values
+diff --git a/src/prefect/cli/deploy/_schedules.py b/src/prefect/cli/deploy/_schedules.py
+index 3c34658cc..0862448b7 100644
+--- a/src/prefect/cli/deploy/_schedules.py
++++ b/src/prefect/cli/deploy/_schedules.py
+@@ -44,6 +44,7 @@ def _schedule_config_to_deployment_schedule(
+     schedule_active = schedule_config.get("active")
+     parameters = schedule_config.get("parameters", {})
+     slug = schedule_config.get("slug")
++    replaces = schedule_config.get("replaces")
+ 
+     if cron := schedule_config.get("cron"):
+         day_or = schedule_config.get("day_or")
+@@ -83,5 +84,7 @@ def _schedule_config_to_deployment_schedule(
+         schedule_obj["parameters"] = parameters
+     if slug:
+         schedule_obj["slug"] = slug
++    if replaces:
++        schedule_obj["replaces"] = replaces
+ 
+     return schedule_obj
+diff --git a/src/prefect/client/schemas/actions.py b/src/prefect/client/schemas/actions.py
+index b66dd19d1..73afedba6 100644
+--- a/src/prefect/client/schemas/actions.py
++++ b/src/prefect/client/schemas/actions.py
+@@ -117,6 +117,10 @@ class DeploymentScheduleCreate(ActionBaseModel):
+         default=None,
+         description="A unique identifier for the schedule.",
+     )
++    replaces: Optional[str] = Field(
++        default=None,
++        description="The slug of an existing schedule that this schedule replaces. Used for renaming slugs.",
++    )
+ 
+     @field_validator("active", mode="wrap")
+     @classmethod
+@@ -195,6 +199,10 @@ class DeploymentScheduleUpdate(ActionBaseModel):
+         default=None,
+         description="A unique identifier for the schedule.",
+     )
++    replaces: Optional[str] = Field(
++        default=None,
++        description="The slug of an existing schedule that this schedule replaces. Used for renaming slugs.",
++    )
+ 
+     @field_validator("max_scheduled_runs")
+     @classmethod
+diff --git a/src/prefect/server/api/deployments.py b/src/prefect/server/api/deployments.py
+index d2c656fe2..dcfcdcc9a 100644
+--- a/src/prefect/server/api/deployments.py
++++ b/src/prefect/server/api/deployments.py
+@@ -3,6 +3,7 @@ Routes for interacting with Deployment objects.
+ """
+ 
+ import datetime
++import logging
+ from typing import List, Optional
+ from uuid import UUID
+ 
+@@ -14,6 +15,7 @@ import prefect.server.api.dependencies as dependencies
+ import prefect.server.models as models
+ import prefect.server.schemas as schemas
+ from prefect._internal.compatibility.starlette import status
++from prefect.logging import get_logger
+ from prefect.server.api.validation import (
+     validate_job_variables_for_deployment,
+     validate_job_variables_for_deployment_flow_run,
+@@ -43,6 +45,8 @@ from prefect.utilities.schema_tools.validation import (
+     validate,
+ )
+ 
++logger: logging.Logger = get_logger(__name__)
++
+ router: PrefectRouter = PrefectRouter(prefix="/deployments", tags=["Deployments"])
+ 
+ 
+@@ -238,9 +242,63 @@ async def update_deployment(
+                 schedule.slug for schedule in existing_deployment.schedules
+             ]
+ 
++            # Check for duplicate replaces targets
++            replaces_targets: dict[str, str] = {}  # old_slug -> new_slug
++            for schedule in deployment.schedules or []:
++                if schedule.replaces:
++                    if schedule.replaces in replaces_targets:
++                        raise HTTPException(
++                            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
++                            detail=f"Multiple schedules have 'replaces' targeting the same slug: {schedule.replaces}",
++                        )
++                    replaces_targets[schedule.replaces] = schedule.slug or ""
++
++            # Reject chained replacements (e.g., A→B and B→C in the same
++            # request) because the sequential DB updates are order-dependent
++            # and can violate the unique (deployment_id, slug) constraint.
++            new_slugs_from_replaces = set(replaces_targets.values())
++            chained = new_slugs_from_replaces & set(replaces_targets.keys())
++            if chained:
++                raise HTTPException(
++                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
++                    detail=f"Chained replacements are not supported. "
++                    f"The following slugs appear as both replacement targets "
++                    f"and new slugs: {', '.join(sorted(chained))}",
++                )
++
++            # Check for slug collisions: if a schedule's new slug already
++            # exists as a current slug, it's a collision
++            for schedule in deployment.schedules:
++                if (
++                    schedule.slug
++                    and schedule.slug in current_slugs
++                    and schedule.replaces
++                ):
++                    raise HTTPException(
++                        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
++                        detail=f"Cannot rename schedule from '{schedule.replaces}' to '{schedule.slug}': "
++                        f"a schedule with slug '{schedule.slug}' already exists.",
++                    )
++
+             for schedule in deployment.schedules:
+-                if schedule.slug in current_slugs:
++                # Check if this schedule replaces an existing one
++                target_slug = schedule.replaces if schedule.replaces else schedule.slug
++
++                if target_slug in current_slugs:
+                     schedules_to_patch.append(schedule)
++                elif schedule.replaces:
++                    # replaces points to a non-existent slug - warn and create new
++                    logger.warning(
++                        f"Schedule with slug '{schedule.slug}' has 'replaces: {schedule.replaces}' "
++                        f"but no schedule with slug '{schedule.replaces}' exists. Creating new schedule."
++                    )
++                    if schedule.schedule:
++                        schedules_to_create.append(schedule)
++                    else:
++                        raise HTTPException(
++                            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
++                            detail="Unable to create new deployment schedules without a schedule configuration.",
++                        )
+                 elif schedule.schedule:
+                     schedules_to_create.append(schedule)
+                 else:
+@@ -348,11 +406,13 @@ async def update_deployment(
+         )
+ 
+         for schedule in schedules_to_patch:
++            # Use replaces slug if provided, otherwise use the schedule's own slug
++            lookup_slug = schedule.replaces if schedule.replaces else schedule.slug
+             await models.deployments.update_deployment_schedule(
+                 session=session,
+                 deployment_id=deployment_id,
+                 schedule=schedule,
+-                deployment_schedule_slug=schedule.slug,
++                deployment_schedule_slug=lookup_slug,
+             )
+         if schedules_to_create:
+             await models.deployments.create_deployment_schedules(
+diff --git a/src/prefect/server/models/deployments.py b/src/prefect/server/models/deployments.py
+index 2a5e73c61..b1fa03003 100644
+--- a/src/prefect/server/models/deployments.py
++++ b/src/prefect/server/models/deployments.py
+@@ -994,7 +994,8 @@ async def create_deployment_schedules(
+ 
+     schedules_with_deployment_id: list[dict[str, Any]] = []
+     for schedule in schedules:
+-        data = schedule.model_dump()
++        # Exclude 'replaces' as it's a deploy-time directive, not a persisted field
++        data = schedule.model_dump(exclude={"replaces"})
+         data["deployment_id"] = deployment_id
+         schedules_with_deployment_id.append(data)
+ 
+@@ -1064,6 +1065,8 @@ async def update_deployment_schedule(
+         deployment_schedule_id: a deployment schedule id
+         schedule: a deployment schedule update action
+     """
++    # Exclude 'replaces' as it's a deploy-time directive, not a persisted field
++    update_values = schedule.model_dump(exclude_none=True, exclude={"replaces"})
+     if deployment_schedule_id:
+         result = await session.execute(
+             sa.update(db.DeploymentSchedule)
+@@ -1073,7 +1076,7 @@ async def update_deployment_schedule(
+                     db.DeploymentSchedule.deployment_id == deployment_id,
+                 )
+             )
+-            .values(**schedule.model_dump(exclude_none=True))
++            .values(**update_values)
+         )
+     elif deployment_schedule_slug:
+         result = await session.execute(
+@@ -1084,7 +1087,7 @@ async def update_deployment_schedule(
+                     db.DeploymentSchedule.deployment_id == deployment_id,
+                 )
+             )
+-            .values(**schedule.model_dump(exclude_none=True))
++            .values(**update_values)
+         )
+     else:
+         raise ValueError(
+diff --git a/src/prefect/server/schemas/actions.py b/src/prefect/server/schemas/actions.py
+index 0c9c70893..ccd871a98 100644
+--- a/src/prefect/server/schemas/actions.py
++++ b/src/prefect/server/schemas/actions.py
+@@ -104,6 +104,10 @@ class DeploymentScheduleCreate(ActionBaseModel):
+         default=None,
+         description="A unique identifier for the schedule.",
+     )
++    replaces: Optional[str] = Field(
++        default=None,
++        description="The slug of an existing schedule that this schedule replaces. Used for renaming slugs.",
++    )
+ 
+     @field_validator("max_scheduled_runs")
+     @classmethod
+@@ -134,6 +138,10 @@ class DeploymentScheduleUpdate(ActionBaseModel):
+         default=None,
+         description="A unique identifier for the schedule.",
+     )
++    replaces: Optional[str] = Field(
++        default=None,
++        description="The slug of an existing schedule that this schedule replaces. Used for renaming slugs.",
++    )
+ 
+     @field_validator("max_scheduled_runs")
+     @classmethod
+diff --git a/tests/cli/test_deploy.py b/tests/cli/test_deploy.py
+index c27e0162f..e580bf5fd 100644
+--- a/tests/cli/test_deploy.py
++++ b/tests/cli/test_deploy.py
+@@ -3361,6 +3361,67 @@ class TestSchedules:
+         assert deployment_schedule.schedule.cron == "0 4 * * *"
+         assert deployment_schedule.schedule.timezone == "America/Chicago"
+ 
++    @pytest.mark.usefixtures("project_dir")
++    async def test_deploy_with_replaces_renames_schedule(
++        self, work_pool: WorkPool, prefect_client: PrefectClient
++    ):
++        """Test that replaces field in YAML renames an existing schedule."""
++        prefect_file = Path("prefect.yaml")
++        with prefect_file.open(mode="r") as f:
++            deploy_config = yaml.safe_load(f)
++
++        # First deploy with original slug
++        deploy_config["deployments"][0]["name"] = "test-name"
++        deploy_config["deployments"][0]["schedules"] = [
++            {
++                "cron": "0 8 * * *",
++                "slug": "original-slug",
++            }
++        ]
++
++        with prefect_file.open(mode="w") as f:
++            yaml.safe_dump(deploy_config, f)
++
++        result = await run_sync_in_worker_thread(
++            invoke_and_assert,
++            command=f"deploy ./flows/hello.py:my_flow -n test-name --pool {work_pool.name}",
++        )
++        assert result.exit_code == 0
++
++        # Verify initial state
++        deployment = await prefect_client.read_deployment_by_name(
++            "An important name/test-name"
++        )
++        assert len(deployment.schedules) == 1
++        assert deployment.schedules[0].slug == "original-slug"
++        original_id = deployment.schedules[0].id
++
++        # Second deploy with replaces
++        deploy_config["deployments"][0]["schedules"] = [
++            {
++                "cron": "0 9 * * *",
++                "slug": "renamed-slug",
++                "replaces": "original-slug",
++            }
++        ]
++
++        with prefect_file.open(mode="w") as f:
++            yaml.safe_dump(deploy_config, f)
++
++        result = await run_sync_in_worker_thread(
++            invoke_and_assert,
++            command=f"deploy ./flows/hello.py:my_flow -n test-name --pool {work_pool.name}",
++        )
++        assert result.exit_code == 0
++
++        # Verify schedule was renamed
++        deployment = await prefect_client.read_deployment_by_name(
++            "An important name/test-name"
++        )
++        assert len(deployment.schedules) == 1
++        assert deployment.schedules[0].slug == "renamed-slug"
++        assert deployment.schedules[0].id == original_id  # Same schedule
++
+ 
+ class TestMultiDeploy:
+     @pytest.mark.usefixtures("project_dir")
+diff --git a/tests/docker/test_registry_pushes.py b/tests/docker/test_registry_pushes.py
+index 563402f68..ff169b05d 100644
+--- a/tests/docker/test_registry_pushes.py
++++ b/tests/docker/test_registry_pushes.py
+@@ -123,7 +123,7 @@ def test_streams_progress_to_stdout(howdy: str, registry: str, capsys: CaptureFi
+ 
+     # spot check a few things we should expect to find in the output
+     assert "push refers to repository" in output
+-    assert "\nPreparing" in output
++    assert "\nPreparing" in output or "\nLayer already exists" in output
+     assert "\nPushing [" in output or "\nLayer already exists" in output
+ 
+ 
+@@ -136,5 +136,5 @@ def test_streams_progress_to_given_stream(howdy: str, registry: str):
+ 
+     # spot check a few things we should expect to find in the output
+     assert "push refers to repository" in output
+-    assert "\nPreparing" in output
++    assert "\nPreparing" in output or "\nLayer already exists" in output
+     assert "\nPushing [" in output or "\nLayer already exists" in output
+diff --git a/tests/server/orchestration/api/test_deployments.py b/tests/server/orchestration/api/test_deployments.py
+index e8b75d6fd..d25571502 100644
+--- a/tests/server/orchestration/api/test_deployments.py
++++ b/tests/server/orchestration/api/test_deployments.py
+@@ -2563,6 +2563,291 @@ class TestUpdateDeployment:
+             in response.json()["exception_detail"][0]["msg"]
+         )
+ 
++    async def test_update_deployment_schedule_with_replaces_renames_slug(
++        self,
++        client: AsyncClient,
++        flow: Flow,
++    ):
++        """When a schedule has 'replaces', it should update the existing schedule with that slug."""
++        schedule1 = schemas.schedules.IntervalSchedule(
++            interval=datetime.timedelta(days=1)
++        )
++
++        # Create deployment with initial schedule
++        data = DeploymentCreate(  # type: ignore
++            name="test-deployment-replaces",
++            flow_id=flow.id,
++            schedules=[
++                schemas.actions.DeploymentScheduleCreate(
++                    schedule=schedule1,
++                    active=True,
++                    slug="old-schedule-slug",
++                ),
++            ],
++        ).model_dump(mode="json")
++
++        response = await client.post("/deployments/", json=data)
++        assert response.status_code == 201
++        deployment_id = response.json()["id"]
++        original_schedule_id = response.json()["schedules"][0]["id"]
++
++        # Update with replaces
++        schedule2 = schemas.schedules.IntervalSchedule(
++            interval=datetime.timedelta(days=2)
++        )
++        update_data = schemas.actions.DeploymentUpdate(
++            schedules=[
++                schemas.actions.DeploymentScheduleUpdate(
++                    schedule=schedule2,
++                    slug="new-schedule-slug",
++                    replaces="old-schedule-slug",
++                ),
++            ],
++        ).model_dump(mode="json", exclude_unset=True)
++
++        response = await client.patch(f"/deployments/{deployment_id}", json=update_data)
++        assert response.status_code == 204
++
++        # Verify the schedule was renamed, not recreated
++        response = await client.get(f"/deployments/{deployment_id}")
++        assert response.status_code == 200
++        schedules = response.json()["schedules"]
++        assert len(schedules) == 1
++        assert schedules[0]["slug"] == "new-schedule-slug"
++        assert schedules[0]["id"] == original_schedule_id  # Same schedule, just renamed
++        assert schedules[0]["schedule"]["interval"] == 172800.0  # 2 days in seconds
++
++    async def test_update_deployment_schedule_replaces_nonexistent_slug_warns_and_creates(
++        self,
++        client: AsyncClient,
++        flow: Flow,
++    ):
++        """When 'replaces' points to a non-existent slug, warn and create new schedule."""
++        schedule1 = schemas.schedules.IntervalSchedule(
++            interval=datetime.timedelta(days=1)
++        )
++
++        # Create deployment with initial schedule
++        data = DeploymentCreate(  # type: ignore
++            name="test-deployment-replaces-nonexistent",
++            flow_id=flow.id,
++            schedules=[
++                schemas.actions.DeploymentScheduleCreate(
++                    schedule=schedule1,
++                    active=True,
++                    slug="existing-slug",
++                ),
++            ],
++        ).model_dump(mode="json")
++
++        response = await client.post("/deployments/", json=data)
++        assert response.status_code == 201
++        deployment_id = response.json()["id"]
++
++        # Update with replaces pointing to non-existent slug
++        schedule2 = schemas.schedules.IntervalSchedule(
++            interval=datetime.timedelta(days=2)
++        )
++        update_data = schemas.actions.DeploymentUpdate(
++            schedules=[
++                schemas.actions.DeploymentScheduleUpdate(
++                    slug="existing-slug",  # Keep existing
++                ),
++                schemas.actions.DeploymentScheduleUpdate(
++                    schedule=schedule2,
++                    slug="new-slug",
++                    replaces="nonexistent-slug",  # This doesn't exist
++                ),
++            ],
++        ).model_dump(mode="json", exclude_unset=True)
++
++        response = await client.patch(f"/deployments/{deployment_id}", json=update_data)
++        assert response.status_code == 204
++
++        # Verify both schedules exist (original preserved, new created)
++        response = await client.get(f"/deployments/{deployment_id}")
++        assert response.status_code == 200
++        schedules = response.json()["schedules"]
++        assert len(schedules) == 2
++        slugs = {s["slug"] for s in schedules}
++        assert slugs == {"existing-slug", "new-slug"}
++
++    async def test_update_deployment_schedule_multiple_replaces_same_target_errors(
++        self,
++        client: AsyncClient,
++        flow: Flow,
++    ):
++        """When multiple schedules have 'replaces' pointing to the same slug, return 422."""
++        schedule1 = schemas.schedules.IntervalSchedule(
++            interval=datetime.timedelta(days=1)
++        )
++
++        # Create deployment with initial schedule
++        data = DeploymentCreate(  # type: ignore
++            name="test-deployment-replaces-conflict",
++            flow_id=flow.id,
++            schedules=[
++                schemas.actions.DeploymentScheduleCreate(
++                    schedule=schedule1,
++                    active=True,
++                    slug="target-slug",
++                ),
++            ],
++        ).model_dump(mode="json")
++
++        response = await client.post("/deployments/", json=data)
++        assert response.status_code == 201
++        deployment_id = response.json()["id"]
++
++        # Update with two schedules both replacing the same slug
++        schedule2 = schemas.schedules.IntervalSchedule(
++            interval=datetime.timedelta(days=2)
++        )
++        schedule3 = schemas.schedules.IntervalSchedule(
++            interval=datetime.timedelta(days=3)
++        )
++        update_data = schemas.actions.DeploymentUpdate(
++            schedules=[
++                schemas.actions.DeploymentScheduleUpdate(
++                    schedule=schedule2,
++                    slug="new-slug-1",
++                    replaces="target-slug",
++                ),
++                schemas.actions.DeploymentScheduleUpdate(
++                    schedule=schedule3,
++                    slug="new-slug-2",
++                    replaces="target-slug",  # Same target - should error
++                ),
++            ],
++        ).model_dump(mode="json", exclude_unset=True)
++
++        response = await client.patch(f"/deployments/{deployment_id}", json=update_data)
++        assert response.status_code == 422
++        assert (
++            "Multiple schedules have 'replaces' targeting the same slug"
++            in response.text
++        )
++
++    async def test_update_deployment_schedule_replaces_collision_with_existing_slug(
++        self,
++        client: AsyncClient,
++        flow: Flow,
++    ):
++        """When 'replaces' renames to a slug that already exists, return 422."""
++        schedule1 = schemas.schedules.IntervalSchedule(
++            interval=datetime.timedelta(days=1)
++        )
++        schedule2 = schemas.schedules.IntervalSchedule(
++            interval=datetime.timedelta(days=2)
++        )
++
++        # Create deployment with two schedules
++        data = DeploymentCreate(  # type: ignore
++            name="test-deployment-replaces-collision",
++            flow_id=flow.id,
++            schedules=[
++                schemas.actions.DeploymentScheduleCreate(
++                    schedule=schedule1,
++                    active=True,
++                    slug="old-slug",
++                ),
++                schemas.actions.DeploymentScheduleCreate(
++                    schedule=schedule2,
++                    active=True,
++                    slug="existing-slug",
++                ),
++            ],
++        ).model_dump(mode="json")
++
++        response = await client.post("/deployments/", json=data)
++        assert response.status_code == 201
++        deployment_id = response.json()["id"]
++
++        # Try to rename old-slug to existing-slug (collision)
++        schedule3 = schemas.schedules.IntervalSchedule(
++            interval=datetime.timedelta(days=3)
++        )
++        update_data = schemas.actions.DeploymentUpdate(
++            schedules=[
++                schemas.actions.DeploymentScheduleUpdate(
++                    schedule=schedule3,
++                    slug="existing-slug",  # This already exists!
++                    replaces="old-slug",
++                ),
++                schemas.actions.DeploymentScheduleUpdate(
++                    slug="existing-slug",  # Keep this one unchanged
++                ),
++            ],
++        ).model_dump(mode="json", exclude_unset=True)
++
++        response = await client.patch(f"/deployments/{deployment_id}", json=update_data)
++        assert response.status_code == 422
++        assert (
++            "Cannot rename schedule from 'old-slug' to 'existing-slug'" in response.text
++        )
++        assert "already exists" in response.text
++
++    async def test_update_deployment_schedule_chained_replaces_errors(
++        self,
++        client: AsyncClient,
++        flow: Flow,
++    ):
++        """Chained replacements (A→B and B→C) should be rejected."""
++        schedule1 = schemas.schedules.IntervalSchedule(
++            interval=datetime.timedelta(days=1)
++        )
++        schedule2 = schemas.schedules.IntervalSchedule(
++            interval=datetime.timedelta(days=2)
++        )
++
++        # Create deployment with two schedules
++        data = DeploymentCreate(  # type: ignore
++            name="test-deployment-chained-replaces",
++            flow_id=flow.id,
++            schedules=[
++                schemas.actions.DeploymentScheduleCreate(
++                    schedule=schedule1,
++                    active=True,
++                    slug="slug-a",
++                ),
++                schemas.actions.DeploymentScheduleCreate(
++                    schedule=schedule2,
++                    active=True,
++                    slug="slug-b",
++                ),
++            ],
++        ).model_dump(mode="json")
++
++        response = await client.post("/deployments/", json=data)
++        assert response.status_code == 201
++        deployment_id = response.json()["id"]
++
++        # Try chained replacement: A→B and B→C
++        schedule3 = schemas.schedules.IntervalSchedule(
++            interval=datetime.timedelta(days=3)
++        )
++        schedule4 = schemas.schedules.IntervalSchedule(
++            interval=datetime.timedelta(days=4)
++        )
++        update_data = schemas.actions.DeploymentUpdate(
++            schedules=[
++                schemas.actions.DeploymentScheduleUpdate(
++                    schedule=schedule3,
++                    slug="slug-b",
++                    replaces="slug-a",
++                ),
++                schemas.actions.DeploymentScheduleUpdate(
++                    schedule=schedule4,
++                    slug="slug-c",
++                    replaces="slug-b",
++                ),
++            ],
++        ).model_dump(mode="json", exclude_unset=True)
++
++        response = await client.patch(f"/deployments/{deployment_id}", json=update_data)
++        assert response.status_code == 422
++        assert "Chained replacements are not supported" in response.text
++
+ 
+ class TestGetScheduledFlowRuns:
+     @pytest.fixture

@@ -1,0 +1,8 @@
+AGENTS.md
+docs/v3/how-to-guides/deployments/create-schedules.mdx
+src/prefect/cli/deploy/_models.py
+src/prefect/cli/deploy/_schedules.py
+src/prefect/client/schemas/actions.py
+src/prefect/server/api/deployments.py
+src/prefect/server/models/deployments.py
+src/prefect/server/schemas/actions.py
