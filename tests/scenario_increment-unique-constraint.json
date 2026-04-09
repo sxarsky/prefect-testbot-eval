@@ -1,0 +1,54 @@
+[
+  {
+    "Source": "192.168.65.1:39998",
+    "Destination": "localhost",
+    "RequestBody": "{\"names\": [\"test-tag\"], \"task_run_id\": \"a1b2c3d4-e5f6-7890-abcd-ef1234567890\"}",
+    "ResponseBody": "[{\"id\": \"a1b2c3d4-e5f6-7890-abcd-ef1234567890\", \"name\": \"tag:test-tag\", \"limit\": 1, \"active_slots\": 0, \"denied_slots\": 0}]",
+    "RequestHeaders": {
+      "Content-Type": [
+        "application/json"
+      ],
+      "Authorization": [
+        "SKYRAMP_PLACEHOLDER_TOKEN"
+      ]
+    },
+    "ResponseHeaders": {
+      "Content-Type": [
+        "application/json"
+      ]
+    },
+    "Method": "POST",
+    "Path": "/api/concurrency_limits/increment",
+    "QueryParams": {},
+    "StatusCode": 201,
+    "Port": 4200,
+    "Timestamp": "2026-04-09T08:03:19.239Z",
+    "Scheme": "http"
+  },
+  {
+    "Source": "192.168.65.1:39998",
+    "Destination": "localhost",
+    "RequestBody": "{\"names\": [\"test-tag\"], \"task_run_id\": \"a1b2c3d4-e5f6-7890-abcd-ef1234567890\"}",
+    "ResponseBody": "{}",
+    "RequestHeaders": {
+      "Content-Type": [
+        "application/json"
+      ],
+      "Authorization": [
+        "SKYRAMP_PLACEHOLDER_TOKEN"
+      ]
+    },
+    "ResponseHeaders": {
+      "Content-Type": [
+        "application/json"
+      ]
+    },
+    "Method": "POST",
+    "Path": "/api/concurrency_limits/increment",
+    "QueryParams": {},
+    "StatusCode": 409,
+    "Port": 4200,
+    "Timestamp": "2026-04-09T08:03:19.239Z",
+    "Scheme": "http"
+  }
+]
