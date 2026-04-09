@@ -258,6 +258,7 @@ SUPPORTED_SETTINGS = {
         "legacy": True,
     },
     "PREFECT_EVENTS_WEBSOCKET_BACKFILL_PAGE_SIZE": {"test_value": 10, "legacy": True},
+    "PREFECT_EVENTS_WORKER_MAX_QUEUE_SIZE": {"test_value": 5000},
     "PREFECT_EXPERIMENTAL_WARN": {"test_value": True, "legacy": True},
     "PREFECT_EXPERIMENTS_WARN": {"test_value": True},
     "PREFECT_EXPERIMENTS_PLUGINS_ALLOW": {
@@ -1549,6 +1550,20 @@ class TestSettingsSources:
         os.unlink(".env")
 
         assert Settings().client.retry_extra_codes == set()
+
+    def test_env_fifo_does_not_hang(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ):
+        """Regression test for https://github.com/PrefectHQ/prefect/issues/21319"""
+        monkeypatch.delenv("PREFECT_TESTING_TEST_MODE", raising=False)
+        monkeypatch.delenv("PREFECT_TESTING_UNIT_TEST_MODE", raising=False)
+        monkeypatch.chdir(tmp_path)
+
+        os.mkfifo(".env")
+
+        from prefect.settings.sources import _get_profiles_path
+
+        _get_profiles_path()
 
     def test_resolution_order(
         self,
