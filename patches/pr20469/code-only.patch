@@ -1,0 +1,775 @@
+diff --git a/src/prefect/server/api/deployments.py b/src/prefect/server/api/deployments.py
+index 981d9806c..d2c656fe2 100644
+--- a/src/prefect/server/api/deployments.py
++++ b/src/prefect/server/api/deployments.py
+@@ -23,7 +23,12 @@ from prefect.server.database import PrefectDBInterface, provide_database_interfa
+ from prefect.server.exceptions import MissingVariableError, ObjectNotFoundError
+ from prefect.server.models.deployments import mark_deployments_ready
+ from prefect.server.models.workers import DEFAULT_AGENT_WORK_POOL_NAME
+-from prefect.server.schemas.responses import DeploymentPaginationResponse
++from prefect.server.schemas.responses import (
++    DeploymentBulkDeleteResponse,
++    DeploymentPaginationResponse,
++    FlowRunBulkCreateResponse,
++    FlowRunCreateResult,
++)
+ from prefect.server.utilities.server import PrefectRouter
+ from prefect.types import DateTime
+ from prefect.types._datetime import now
+@@ -605,6 +610,49 @@ async def delete_deployment(
+         )
+ 
+ 
++BULK_OPERATION_LIMIT = 50
++
++
++@router.post("/bulk_delete")
++async def bulk_delete_deployments(
++    deployments: Optional[schemas.filters.DeploymentFilter] = Body(
++        None, description="Filter criteria for deployments to delete"
++    ),
++    limit: int = Body(
++        BULK_OPERATION_LIMIT,
++        ge=1,
++        le=BULK_OPERATION_LIMIT,
++        description=f"Maximum number of deployments to delete. Defaults to {BULK_OPERATION_LIMIT}.",
++    ),
++    db: PrefectDBInterface = Depends(provide_database_interface),
++) -> DeploymentBulkDeleteResponse:
++    """
++    Bulk delete deployments matching the specified filter criteria.
++
++    Returns the IDs of deployments that were deleted.
++    """
++    async with db.session_context(begin_transaction=True) as session:
++        # Query matching deployments
++        db_deployments = await models.deployments.read_deployments(
++            session=session,
++            deployment_filter=deployments,
++            limit=limit,
++        )
++
++        if not db_deployments:
++            return DeploymentBulkDeleteResponse(deleted=[])
++
++        deployment_ids = [d.id for d in db_deployments]
++
++        # Delete deployments
++        deleted_ids = await models.deployments.delete_deployments(
++            session=session,
++            deployment_ids=deployment_ids,
++        )
++
++    return DeploymentBulkDeleteResponse(deleted=deleted_ids)
++
++
+ @router.post("/{id:uuid}/schedule")
+ async def schedule_deployment(
+     deployment_id: UUID = Path(..., description="The deployment id", alias="id"),
+@@ -842,6 +890,224 @@ async def create_flow_run_from_deployment(
+         )
+ 
+ 
++BULK_CREATE_LIMIT = 100
++
++
++@router.post("/{id:uuid}/create_flow_run/bulk")
++async def bulk_create_flow_runs_from_deployment(
++    flow_runs: List[schemas.actions.DeploymentFlowRunCreate] = Body(
++        ..., description="List of flow run configurations to create"
++    ),
++    deployment_id: UUID = Path(..., description="The deployment id", alias="id"),
++    created_by: Optional[schemas.core.CreatedBy] = Depends(dependencies.get_created_by),
++    db: PrefectDBInterface = Depends(provide_database_interface),
++    worker_lookups: WorkerLookups = Depends(WorkerLookups),
++) -> FlowRunBulkCreateResponse:
++    """
++    Create multiple flow runs from a deployment.
++
++    Any parameters not provided will be inferred from the deployment's parameters.
++    If tags are not provided, the deployment's tags will be used.
++
++    If no state is provided, the flow runs will be created in a SCHEDULED state.
++    """
++    if len(flow_runs) > BULK_CREATE_LIMIT:
++        raise HTTPException(
++            status_code=status.HTTP_400_BAD_REQUEST,
++            detail=f"Cannot create more than {BULK_CREATE_LIMIT} flow runs at once.",
++        )
++
++    results: List[FlowRunCreateResult] = []
++
++    async with db.session_context(begin_transaction=True) as session:
++        # Get the deployment once - do this before the empty check so we
++        # return 404 for non-existent deployments even with an empty list
++        deployment = await models.deployments.read_deployment(
++            session=session, deployment_id=deployment_id
++        )
++
++        if not deployment:
++            raise HTTPException(
++                status_code=status.HTTP_404_NOT_FOUND, detail="Deployment not found"
++            )
++
++        # Return early for empty list, but only after verifying deployment exists
++        if not flow_runs:
++            return FlowRunBulkCreateResponse(results=[])
++
++        # Pre-create unique work queues to avoid race conditions
++        # Collect unique work queue names that differ from the deployment's default
++        unique_work_queue_names = {
++            fr.work_queue_name
++            for fr in flow_runs
++            if fr.work_queue_name and fr.work_queue_name != deployment.work_queue_name
++        }
++
++        # Pre-create work queues if needed
++        if (
++            unique_work_queue_names
++            and deployment.work_queue
++            and deployment.work_queue.work_pool
++        ):
++            work_pool_name = deployment.work_queue.work_pool.name
++            for work_queue_name in unique_work_queue_names:
++                await worker_lookups._get_work_queue_id_from_name(
++                    session=session,
++                    work_pool_name=work_pool_name,
++                    work_queue_name=work_queue_name,
++                    create_queue_if_not_found=True,
++                )
++
++        # Build hydration context once
++        try:
++            ctx = await HydrationContext.build(
++                session=session,
++                raise_on_error=True,
++                render_jinja=True,
++                render_workspace_variables=True,
++            )
++        except HydrationError as exc:
++            raise HTTPException(
++                status.HTTP_400_BAD_REQUEST,
++                detail=f"Error building hydration context: {exc}",
++            )
++
++        # Process flow runs sequentially within the transaction
++        # (SQLAlchemy sessions are not safe for concurrent operations)
++        for flow_run_request in flow_runs:
++            try:
++                # Hydrate parameters
++                dehydrated_params = deployment.parameters.copy()
++                dehydrated_params.update(flow_run_request.parameters or {})
++                parameters = hydrate(dehydrated_params, ctx)
++
++                # Default and override for enforce_parameter_schema
++                enforce_parameter_schema = deployment.enforce_parameter_schema
++                if flow_run_request.enforce_parameter_schema is not None:
++                    enforce_parameter_schema = flow_run_request.enforce_parameter_schema
++
++                # Validate parameters if schema enforcement is enabled
++                if enforce_parameter_schema:
++                    if not isinstance(deployment.parameter_openapi_schema, dict):
++                        results.append(
++                            FlowRunCreateResult(
++                                status="FAILED",
++                                error="Parameter schema enforcement is enabled but deployment has no valid schema.",
++                            )
++                        )
++                        continue
++                    try:
++                        validate(
++                            parameters,
++                            deployment.parameter_openapi_schema,
++                            raise_on_error=True,
++                        )
++                    except ValidationError as exc:
++                        results.append(
++                            FlowRunCreateResult(
++                                status="FAILED",
++                                error=f"Parameter validation failed: {exc}",
++                            )
++                        )
++                        continue
++                    except CircularSchemaRefError:
++                        results.append(
++                            FlowRunCreateResult(
++                                status="FAILED",
++                                error="Invalid schema: circular references detected.",
++                            )
++                        )
++                        continue
++
++                # Validate job variables
++                try:
++                    await validate_job_variables_for_deployment_flow_run(
++                        session, deployment, flow_run_request
++                    )
++                except HTTPException as exc:
++                    results.append(
++                        FlowRunCreateResult(
++                            status="FAILED",
++                            error=str(exc.detail),
++                        )
++                    )
++                    continue
++
++                # Determine work queue
++                work_queue_name = deployment.work_queue_name
++                work_queue_id = deployment.work_queue_id
++
++                if flow_run_request.work_queue_name:
++                    if (
++                        deployment.work_queue is None
++                        or deployment.work_queue.work_pool is None
++                    ):
++                        results.append(
++                            FlowRunCreateResult(
++                                status="FAILED",
++                                error=f"Cannot create flow run in work queue {flow_run_request.work_queue_name} because deployment is not associated with a work pool.",
++                            )
++                        )
++                        continue
++
++                    work_queue_id = await worker_lookups._get_work_queue_id_from_name(
++                        session=session,
++                        work_pool_name=deployment.work_queue.work_pool.name,
++                        work_queue_name=flow_run_request.work_queue_name,
++                        create_queue_if_not_found=True,
++                    )
++                    work_queue_name = flow_run_request.work_queue_name
++
++                # Create the flow run model
++                flow_run_model = schemas.core.FlowRun(
++                    **flow_run_request.model_dump(
++                        exclude={
++                            "parameters",
++                            "tags",
++                            "infrastructure_document_id",
++                            "work_queue_name",
++                            "enforce_parameter_schema",
++                        }
++                    ),
++                    flow_id=deployment.flow_id,
++                    deployment_id=deployment.id,
++                    deployment_version=deployment.version,
++                    parameters=parameters,
++                    tags=set(deployment.tags).union(flow_run_request.tags),
++                    infrastructure_document_id=(
++                        flow_run_request.infrastructure_document_id
++                        or deployment.infrastructure_document_id
++                    ),
++                    work_queue_name=work_queue_name,
++                    work_queue_id=work_queue_id,
++                    created_by=created_by,
++                )
++
++                if not flow_run_model.state:
++                    flow_run_model.state = schemas.states.Scheduled()
++
++                model = await models.flow_runs.create_flow_run(
++                    session=session, flow_run=flow_run_model
++                )
++
++                results.append(
++                    FlowRunCreateResult(
++                        flow_run_id=model.id,
++                        status="CREATED",
++                    )
++                )
++
++            except Exception as exc:
++                results.append(
++                    FlowRunCreateResult(
++                        status="FAILED",
++                        error=str(exc),
++                    )
++                )
++
++    return FlowRunBulkCreateResponse(results=results)
++
++
+ # DEPRECATED
+ @router.get("/{id:uuid}/work_queue_check", deprecated=True)
+ async def work_queue_check_for_deployment(
+diff --git a/src/prefect/server/api/flow_runs.py b/src/prefect/server/api/flow_runs.py
+index cdf20822c..b32036d76 100644
+--- a/src/prefect/server/api/flow_runs.py
++++ b/src/prefect/server/api/flow_runs.py
+@@ -46,6 +46,9 @@ from prefect.server.orchestration.policies import (
+ )
+ from prefect.server.schemas.graph import Graph
+ from prefect.server.schemas.responses import (
++    FlowRunBulkDeleteResponse,
++    FlowRunBulkSetStateResponse,
++    FlowRunOrchestrationResult,
+     FlowRunPaginationResponse,
+     OrchestrationResult,
+ )
+@@ -609,6 +612,142 @@ async def delete_flow_run_logs(
+         )
+ 
+ 
++BULK_OPERATION_LIMIT = 50
++
++
++@router.post("/bulk_delete")
++async def bulk_delete_flow_runs(
++    docket: dependencies.Docket,
++    flow_runs: Optional[schemas.filters.FlowRunFilter] = Body(
++        None, description="Filter criteria for flow runs to delete"
++    ),
++    limit: int = Body(
++        BULK_OPERATION_LIMIT,
++        ge=1,
++        le=BULK_OPERATION_LIMIT,
++        description=f"Maximum number of flow runs to delete. Defaults to {BULK_OPERATION_LIMIT}.",
++    ),
++    db: PrefectDBInterface = Depends(provide_database_interface),
++) -> FlowRunBulkDeleteResponse:
++    """
++    Bulk delete flow runs matching the specified filter criteria.
++
++    Returns the IDs of flow runs that were deleted.
++    """
++    async with db.session_context(begin_transaction=True) as session:
++        # Query matching flow runs
++        db_flow_runs = await models.flow_runs.read_flow_runs(
++            session=session,
++            flow_run_filter=flow_runs,
++            limit=limit,
++        )
++
++        if not db_flow_runs:
++            return FlowRunBulkDeleteResponse(deleted=[])
++
++        flow_run_ids = [fr.id for fr in db_flow_runs]
++
++        # Delete flow runs
++        deleted_ids = await models.flow_runs.delete_flow_runs(
++            session=session,
++            flow_run_ids=flow_run_ids,
++        )
++
++    # Queue log cleanup for each deleted flow run
++    for flow_run_id in deleted_ids:
++        await docket.add(
++            delete_flow_run_logs,
++            key=f"delete_flow_run_logs:{flow_run_id}",
++        )(flow_run_id=flow_run_id)
++
++    return FlowRunBulkDeleteResponse(deleted=deleted_ids)
++
++
++@router.post("/bulk_set_state")
++async def bulk_set_flow_run_state(
++    flow_runs: Optional[schemas.filters.FlowRunFilter] = Body(
++        None, description="Filter criteria for flow runs to update"
++    ),
++    state: schemas.actions.StateCreate = Body(..., description="The state to set"),
++    force: bool = Body(
++        False,
++        description=(
++            "If false, orchestration rules will be applied that may alter or prevent"
++            " the state transition. If True, orchestration rules are not applied."
++        ),
++    ),
++    limit: int = Body(
++        BULK_OPERATION_LIMIT,
++        ge=1,
++        le=BULK_OPERATION_LIMIT,
++        description=f"Maximum number of flow runs to update. Defaults to {BULK_OPERATION_LIMIT}.",
++    ),
++    db: PrefectDBInterface = Depends(provide_database_interface),
++    flow_policy: type[FlowRunOrchestrationPolicy] = Depends(
++        orchestration_dependencies.provide_flow_policy
++    ),
++    orchestration_parameters: Dict[str, Any] = Depends(
++        orchestration_dependencies.provide_flow_orchestration_parameters
++    ),
++    api_version: str = Depends(dependencies.provide_request_api_version),
++    client_version: Optional[str] = Depends(dependencies.get_prefect_client_version),
++) -> FlowRunBulkSetStateResponse:
++    """
++    Bulk set state for flow runs matching the specified filter criteria.
++
++    Returns the orchestration results for each flow run.
++    """
++    orchestration_parameters.update({"api-version": api_version})
++
++    async with db.session_context() as session:
++        # Query matching flow runs
++        db_flow_runs = await models.flow_runs.read_flow_runs(
++            session=session,
++            flow_run_filter=flow_runs,
++            limit=limit,
++        )
++
++    if not db_flow_runs:
++        return FlowRunBulkSetStateResponse(results=[])
++
++    results: List[FlowRunOrchestrationResult] = []
++
++    # Process flow runs sequentially to avoid session conflicts
++    for flow_run in db_flow_runs:
++        async with db.session_context(
++            begin_transaction=True, with_for_update=True
++        ) as session:
++            try:
++                orchestration_result = await models.flow_runs.set_flow_run_state(
++                    session=session,
++                    flow_run_id=flow_run.id,
++                    state=schemas.states.State.model_validate(state),
++                    force=force,
++                    flow_policy=flow_policy,
++                    orchestration_parameters=orchestration_parameters,
++                    client_version=client_version,
++                )
++                results.append(
++                    FlowRunOrchestrationResult(
++                        flow_run_id=flow_run.id,
++                        status=orchestration_result.status,
++                        state=orchestration_result.state,
++                        details=orchestration_result.details,
++                    )
++                )
++            except Exception as e:
++                results.append(
++                    FlowRunOrchestrationResult(
++                        flow_run_id=flow_run.id,
++                        status=schemas.responses.SetStateStatus.ABORT,
++                        state=None,
++                        details=schemas.responses.StateAbortDetails(reason=str(e)),
++                    )
++                )
++
++    return FlowRunBulkSetStateResponse(results=results)
++
++
+ @router.post("/{id:uuid}/set_state")
+ async def set_flow_run_state(
+     response: Response,
+diff --git a/src/prefect/server/api/flows.py b/src/prefect/server/api/flows.py
+index 6bb6faf07..04142110b 100644
+--- a/src/prefect/server/api/flows.py
++++ b/src/prefect/server/api/flows.py
+@@ -12,7 +12,10 @@ import prefect.server.api.dependencies as dependencies
+ import prefect.server.models as models
+ import prefect.server.schemas as schemas
+ from prefect.server.database import PrefectDBInterface, provide_database_interface
+-from prefect.server.schemas.responses import FlowPaginationResponse
++from prefect.server.schemas.responses import (
++    FlowBulkDeleteResponse,
++    FlowPaginationResponse,
++)
+ from prefect.server.utilities.server import PrefectRouter
+ from prefect.types._datetime import now
+ 
+@@ -164,6 +167,51 @@ async def delete_flow(
+         )
+ 
+ 
++BULK_OPERATION_LIMIT = 50
++
++
++@router.post("/bulk_delete")
++async def bulk_delete_flows(
++    flows: Optional[schemas.filters.FlowFilter] = Body(
++        None, description="Filter criteria for flows to delete"
++    ),
++    limit: int = Body(
++        BULK_OPERATION_LIMIT,
++        ge=1,
++        le=BULK_OPERATION_LIMIT,
++        description=f"Maximum number of flows to delete. Defaults to {BULK_OPERATION_LIMIT}.",
++    ),
++    db: PrefectDBInterface = Depends(provide_database_interface),
++) -> FlowBulkDeleteResponse:
++    """
++    Bulk delete flows matching the specified filter criteria.
++
++    This also deletes all associated deployments.
++
++    Returns the IDs of flows that were deleted.
++    """
++    async with db.session_context(begin_transaction=True) as session:
++        # Query matching flows
++        db_flows = await models.flows.read_flows(
++            session=session,
++            flow_filter=flows,
++            limit=limit,
++        )
++
++        if not db_flows:
++            return FlowBulkDeleteResponse(deleted=[])
++
++        flow_ids = [f.id for f in db_flows]
++
++        # Delete flows (and their deployments)
++        deleted_ids = await models.flows.delete_flows(
++            session=session,
++            flow_ids=flow_ids,
++        )
++
++    return FlowBulkDeleteResponse(deleted=deleted_ids)
++
++
+ @router.post("/paginate")
+ async def paginate_flows(
+     limit: int = dependencies.LimitBody(),
+diff --git a/src/prefect/server/models/deployments.py b/src/prefect/server/models/deployments.py
+index 77fcfc914..2a5e73c61 100644
+--- a/src/prefect/server/models/deployments.py
++++ b/src/prefect/server/models/deployments.py
+@@ -606,6 +606,59 @@ async def _delete_related_concurrency_limit(
+     )
+ 
+ 
++@db_injector
++async def delete_deployments(
++    db: PrefectDBInterface,
++    session: AsyncSession,
++    deployment_ids: list[UUID],
++) -> list[UUID]:
++    """
++    Delete multiple deployments by their IDs.
++
++    Args:
++        session: A database session
++        deployment_ids: a list of deployment ids to delete
++
++    Returns:
++        List[UUID]: the IDs of the deployments that were deleted
++    """
++    if not deployment_ids:
++        return []
++
++    # Get existing deployment IDs
++    result = await session.execute(
++        select(db.Deployment.id).where(db.Deployment.id.in_(deployment_ids))
++    )
++    existing_ids = list(result.scalars().all())
++
++    if not existing_ids:
++        return []
++
++    # Delete scheduled runs for all deployments
++    for deployment_id in existing_ids:
++        await _delete_scheduled_runs(
++            session=session, deployment_id=deployment_id, auto_scheduled_only=False
++        )
++
++    # Delete related concurrency limits
++    await session.execute(
++        delete(db.ConcurrencyLimitV2).where(
++            db.ConcurrencyLimitV2.id.in_(
++                select(db.Deployment.concurrency_limit_id).where(
++                    db.Deployment.id.in_(existing_ids)
++                )
++            )
++        )
++    )
++
++    # Delete all deployments
++    await session.execute(
++        delete(db.Deployment).where(db.Deployment.id.in_(existing_ids))
++    )
++
++    return existing_ids
++
++
+ @db_injector
+ async def schedule_runs(
+     db: PrefectDBInterface,
+diff --git a/src/prefect/server/models/flow_runs.py b/src/prefect/server/models/flow_runs.py
+index 4538d6ec1..35182b0be 100644
+--- a/src/prefect/server/models/flow_runs.py
++++ b/src/prefect/server/models/flow_runs.py
+@@ -504,6 +504,48 @@ async def delete_flow_run(
+     return result.rowcount > 0
+ 
+ 
++@db_injector
++async def delete_flow_runs(
++    db: PrefectDBInterface,
++    session: AsyncSession,
++    flow_run_ids: List[UUID],
++) -> List[UUID]:
++    """
++    Delete multiple flow runs by their IDs, handling concurrency limits.
++
++    Args:
++        session: A database session
++        flow_run_ids: a list of flow run ids to delete
++
++    Returns:
++        List[UUID]: the IDs of the flow runs that were deleted
++    """
++    if not flow_run_ids:
++        return []
++
++    # Read all flow runs to handle concurrency cleanup
++    flow_runs = await session.execute(
++        select(db.FlowRun).where(db.FlowRun.id.in_(flow_run_ids))
++    )
++    flow_run_list = flow_runs.scalars().all()
++
++    if not flow_run_list:
++        return []
++
++    # Cleanup concurrency slots for each flow run that has a deployment
++    for flow_run in flow_run_list:
++        if flow_run.deployment_id:
++            await cleanup_flow_run_concurrency_slots(session=session, flow_run=flow_run)
++
++    # Get the IDs of flow runs that exist
++    existing_ids = [fr.id for fr in flow_run_list]
++
++    # Delete all flow runs in one query
++    await session.execute(delete(db.FlowRun).where(db.FlowRun.id.in_(existing_ids)))
++
++    return existing_ids
++
++
+ async def set_flow_run_state(
+     session: AsyncSession,
+     flow_run_id: UUID,
+diff --git a/src/prefect/server/models/flows.py b/src/prefect/server/models/flows.py
+index 32369cfc8..505e196e3 100644
+--- a/src/prefect/server/models/flows.py
++++ b/src/prefect/server/models/flows.py
+@@ -3,7 +3,7 @@ Functions for interacting with flow ORM objects.
+ Intended for internal use by the Prefect REST API.
+ """
+ 
+-from typing import Optional, Sequence, TypeVar, Union
++from typing import List, Optional, Sequence, TypeVar, Union
+ from uuid import UUID
+ 
+ import sqlalchemy as sa
+@@ -290,6 +290,45 @@ async def delete_flow(
+     return result.rowcount > 0
+ 
+ 
++@db_injector
++async def delete_flows(
++    db: PrefectDBInterface,
++    session: AsyncSession,
++    flow_ids: List[UUID],
++) -> List[UUID]:
++    """
++    Delete multiple flows by their IDs.
++
++    This also deletes all associated deployments (hard delete).
++
++    Args:
++        session: A database session
++        flow_ids: a list of flow ids to delete
++
++    Returns:
++        List[UUID]: the IDs of the flows that were deleted
++    """
++    if not flow_ids:
++        return []
++
++    # Get existing flow IDs
++    result = await session.execute(select(db.Flow.id).where(db.Flow.id.in_(flow_ids)))
++    existing_ids = list(result.scalars().all())
++
++    if not existing_ids:
++        return []
++
++    # Delete associated deployments (hard delete - cascade will handle related data)
++    await session.execute(
++        delete(db.Deployment).where(db.Deployment.flow_id.in_(existing_ids))
++    )
++
++    # Delete the flows
++    await session.execute(delete(db.Flow).where(db.Flow.id.in_(existing_ids)))
++
++    return existing_ids
++
++
+ @db_injector
+ async def read_flow_labels(
+     db: PrefectDBInterface,
+diff --git a/src/prefect/server/schemas/filters.py b/src/prefect/server/schemas/filters.py
+index 942da781f..58c1b4627 100644
+--- a/src/prefect/server/schemas/filters.py
++++ b/src/prefect/server/schemas/filters.py
+@@ -92,6 +92,9 @@ class FlowFilterId(PrefectFilterBaseModel):
+     any_: Optional[list[UUID]] = Field(
+         default=None, description="A list of flow ids to include"
+     )
++    not_any_: Optional[list[UUID]] = Field(
++        default=None, description="A list of flow ids to exclude"
++    )
+ 
+     def _get_filter_list(
+         self, db: "PrefectDBInterface"
+@@ -99,6 +102,8 @@ class FlowFilterId(PrefectFilterBaseModel):
+         filters: list[sa.ColumnExpressionArgument[bool]] = []
+         if self.any_ is not None:
+             filters.append(db.Flow.id.in_(self.any_))
++        if self.not_any_ is not None:
++            filters.append(db.Flow.id.not_in(self.not_any_))
+         return filters
+ 
+ 
+diff --git a/src/prefect/server/schemas/responses.py b/src/prefect/server/schemas/responses.py
+index e6c41170e..190793516 100644
+--- a/src/prefect/server/schemas/responses.py
++++ b/src/prefect/server/schemas/responses.py
+@@ -665,3 +665,53 @@ SchemaValueError = Union[str, SchemaValuePropertyError, SchemaValueIndexError]
+ class SchemaValuesValidationResponse(BaseModel):
+     errors: List[SchemaValueError]
+     valid: bool
++
++
++# Bulk operation response schemas
++
++
++class FlowRunBulkDeleteResponse(PrefectBaseModel):
++    """Response from bulk flow run deletion."""
++
++    deleted: List[UUID] = Field(default_factory=list)
++
++
++class DeploymentBulkDeleteResponse(PrefectBaseModel):
++    """Response from bulk deployment deletion."""
++
++    deleted: List[UUID] = Field(default_factory=list)
++
++
++class FlowBulkDeleteResponse(PrefectBaseModel):
++    """Response from bulk flow deletion."""
++
++    deleted: List[UUID] = Field(default_factory=list)
++
++
++class FlowRunOrchestrationResult(PrefectBaseModel):
++    """Per-run result for bulk state operations."""
++
++    flow_run_id: UUID
++    status: SetStateStatus
++    state: Optional[schemas.states.State] = None
++    details: StateResponseDetails
++
++
++class FlowRunBulkSetStateResponse(PrefectBaseModel):
++    """Response from bulk set state operation."""
++
++    results: List[FlowRunOrchestrationResult] = Field(default_factory=list)
++
++
++class FlowRunCreateResult(PrefectBaseModel):
++    """Per-run result for bulk create operations."""
++
++    flow_run_id: Optional[UUID] = None
++    status: Literal["CREATED", "FAILED"]
++    error: Optional[str] = None
++
++
++class FlowRunBulkCreateResponse(PrefectBaseModel):
++    """Response from bulk flow run creation."""
++
++    results: List[FlowRunCreateResult] = Field(default_factory=list)

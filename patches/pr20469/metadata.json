@@ -1,0 +1,8 @@
+{
+    "pr_number": 20469,
+    "title": "Add bulk operation endpoints for flow runs, deployments, and flows",
+    "merge_commit": "fa8b4a8d6244d3bb192339affd12a8c133d584fc",
+    "merged_at": "2026-02-02T15:54:03Z",
+    "upstream_repo": "PrefectHQ/prefect",
+    "extracted_at": "2026-04-09T06:00:26Z"
+}
