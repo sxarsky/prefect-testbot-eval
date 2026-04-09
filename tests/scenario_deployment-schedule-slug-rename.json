@@ -1,0 +1,94 @@
+[
+  {
+    "Source": "192.168.65.1:39998",
+    "Destination": "localhost",
+    "RequestBody": "{\"name\": \"testbot-schedule-rename-flow\"}",
+    "ResponseBody": "{\"id\": \"<flow_id>\", \"name\": \"testbot-schedule-rename-flow\"}",
+    "RequestHeaders": {
+      "Content-Type": [
+        "application/json"
+      ]
+    },
+    "ResponseHeaders": {
+      "Content-Type": [
+        "application/json"
+      ]
+    },
+    "Method": "POST",
+    "Path": "/api/flows/",
+    "QueryParams": {},
+    "StatusCode": 200,
+    "Port": 4200,
+    "Timestamp": "2026-04-09T17:12:00.296Z",
+    "Scheme": "http"
+  },
+  {
+    "Source": "192.168.65.1:39998",
+    "Destination": "localhost",
+    "RequestBody": "{\"name\": \"testbot-schedule-rename-deployment\", \"flow_id\": \"<chained_flow_id>\", \"paused\": false, \"schedules\": [{\"schedule\": {\"interval\": 3600}, \"slug\": \"alpha-schedule\", \"active\": true}]}",
+    "ResponseBody": "{\"id\": \"<deployment_id>\", \"name\": \"testbot-schedule-rename-deployment\", \"schedules\": [{\"slug\": \"alpha-schedule\"}]}",
+    "RequestHeaders": {
+      "Content-Type": [
+        "application/json"
+      ]
+    },
+    "ResponseHeaders": {
+      "Content-Type": [
+        "application/json"
+      ]
+    },
+    "Method": "POST",
+    "Path": "/api/deployments/",
+    "QueryParams": {},
+    "StatusCode": 200,
+    "Port": 4200,
+    "Timestamp": "2026-04-09T17:12:00.296Z",
+    "Scheme": "http"
+  },
+  {
+    "Source": "192.168.65.1:39998",
+    "Destination": "localhost",
+    "RequestBody": "{\"schedules\": [{\"replaces\": \"alpha-schedule\", \"slug\": \"beta-schedule\", \"schedule\": {\"interval\": 3600}, \"active\": true}]}",
+    "ResponseBody": "{}",
+    "RequestHeaders": {
+      "Content-Type": [
+        "application/json"
+      ]
+    },
+    "ResponseHeaders": {
+      "Content-Type": [
+        "application/json"
+      ]
+    },
+    "Method": "PATCH",
+    "Path": "/api/deployments/<deployment_id>",
+    "QueryParams": {},
+    "StatusCode": 204,
+    "Port": 4200,
+    "Timestamp": "2026-04-09T17:12:00.296Z",
+    "Scheme": "http"
+  },
+  {
+    "Source": "192.168.65.1:39998",
+    "Destination": "localhost",
+    "RequestBody": "",
+    "ResponseBody": "[{\"slug\": \"beta-schedule\", \"active\": true}]",
+    "RequestHeaders": {
+      "Content-Type": [
+        "application/json"
+      ]
+    },
+    "ResponseHeaders": {
+      "Content-Type": [
+        "application/json"
+      ]
+    },
+    "Method": "GET",
+    "Path": "/api/deployments/<deployment_id>/schedules",
+    "QueryParams": {},
+    "StatusCode": 200,
+    "Port": 4200,
+    "Timestamp": "2026-04-09T17:12:00.296Z",
+    "Scheme": "http"
+  }
+]
