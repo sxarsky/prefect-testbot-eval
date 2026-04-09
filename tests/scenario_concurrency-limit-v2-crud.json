@@ -1,0 +1,106 @@
+[
+  {
+    "Source": "192.168.65.1:39998",
+    "Destination": "testbot-prefect",
+    "RequestBody": "{\"name\": \"test-crud-ts001\", \"limit\": 5, \"active\": true}",
+    "ResponseBody": "{\"id\": \"a1b2c3d4-e5f6-7890-abcd-ef1234567890\", \"name\": \"test-crud-ts001\", \"limit\": 5, \"active\": true, \"active_slots\": 0, \"slot_decay_per_second\": 0.0, \"denied_slots\": 0, \"avg_slot_occupancy_seconds\": 2.0}",
+    "RequestHeaders": {
+      "Content-Type": [
+        "application/json"
+      ],
+      "Authorization": [
+        "Bearer SKYRAMP_PLACEHOLDER_TOKEN"
+      ]
+    },
+    "ResponseHeaders": {
+      "Content-Type": [
+        "application/json"
+      ]
+    },
+    "Method": "POST",
+    "Path": "/api/v2/concurrency_limits/",
+    "QueryParams": {},
+    "StatusCode": 201,
+    "Port": 4200,
+    "Timestamp": "2026-04-09T19:41:15.425Z",
+    "Scheme": "http"
+  },
+  {
+    "Source": "192.168.65.1:39998",
+    "Destination": "testbot-prefect",
+    "RequestBody": "",
+    "ResponseBody": "{\"id\": \"a1b2c3d4-e5f6-7890-abcd-ef1234567890\", \"name\": \"test-crud-ts001\", \"limit\": 5, \"active\": true, \"active_slots\": 0, \"slot_decay_per_second\": 0.0, \"denied_slots\": 0, \"avg_slot_occupancy_seconds\": 2.0}",
+    "RequestHeaders": {
+      "Content-Type": [
+        "application/json"
+      ],
+      "Authorization": [
+        "Bearer SKYRAMP_PLACEHOLDER_TOKEN"
+      ]
+    },
+    "ResponseHeaders": {
+      "Content-Type": [
+        "application/json"
+      ]
+    },
+    "Method": "GET",
+    "Path": "/api/v2/concurrency_limits/a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+    "QueryParams": {},
+    "StatusCode": 200,
+    "Port": 4200,
+    "Timestamp": "2026-04-09T19:41:15.425Z",
+    "Scheme": "http"
+  },
+  {
+    "Source": "192.168.65.1:39998",
+    "Destination": "testbot-prefect",
+    "RequestBody": "{\"limit\": 10}",
+    "ResponseBody": "{}",
+    "RequestHeaders": {
+      "Content-Type": [
+        "application/json"
+      ],
+      "Authorization": [
+        "Bearer SKYRAMP_PLACEHOLDER_TOKEN"
+      ]
+    },
+    "ResponseHeaders": {
+      "Content-Type": [
+        "application/json"
+      ]
+    },
+    "Method": "PATCH",
+    "Path": "/api/v2/concurrency_limits/a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+    "QueryParams": {},
+    "StatusCode": 204,
+    "Port": 4200,
+    "Timestamp": "2026-04-09T19:41:15.425Z",
+    "Scheme": "http"
+  },
+  {
+    "Source": "192.168.65.1:39998",
+    "Destination": "testbot-prefect",
+    "RequestBody": "",
+    "ResponseBody": "{}",
+    "RequestHeaders": {
+      "Content-Type": [
+        "application/json"
+      ],
+      "Authorization": [
+        "Bearer SKYRAMP_PLACEHOLDER_TOKEN"
+      ]
+    },
+    "ResponseHeaders": {
+      "Content-Type": [
+        "application/json"
+      ]
+    },
+    "Method": "DELETE",
+    "Path": "/api/v2/concurrency_limits/a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+    "QueryParams": {},
+    "StatusCode": 204,
+    "Port": 4200,
+    "Timestamp": "2026-04-09T19:41:15.425Z",
+    "Scheme": "http"
+  }
+]
