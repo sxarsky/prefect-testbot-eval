@@ -1,0 +1,71 @@
+[
+  {
+    "Source": "192.168.65.1:39998",
+    "Destination": "localhost",
+    "RequestBody": "{\"name\": \"test-flow-for-deployment-bulk-delete\"}",
+    "ResponseBody": "{\"id\": \"<uuid>\", \"name\": \"test-flow-for-deployment-bulk-delete\"}",
+    "RequestHeaders": {
+      "Content-Type": [
+        "application/json"
+      ]
+    },
+    "ResponseHeaders": {
+      "Content-Type": [
+        "application/json"
+      ]
+    },
+    "Method": "POST",
+    "Path": "/api/flows/",
+    "QueryParams": {},
+    "StatusCode": 201,
+    "Port": 4200,
+    "Timestamp": "2026-04-09T19:24:56.905Z",
+    "Scheme": "http"
+  },
+  {
+    "Source": "192.168.65.1:39998",
+    "Destination": "localhost",
+    "RequestBody": "{\"name\": \"test-deployment-bulk-delete\", \"flow_id\": \"<chained from step 1>\", \"paused\": false}",
+    "ResponseBody": "{\"id\": \"<uuid>\", \"name\": \"test-deployment-bulk-delete\", \"flow_id\": \"<uuid>\"}",
+    "RequestHeaders": {
+      "Content-Type": [
+        "application/json"
+      ]
+    },
+    "ResponseHeaders": {
+      "Content-Type": [
+        "application/json"
+      ]
+    },
+    "Method": "POST",
+    "Path": "/api/deployments/",
+    "QueryParams": {},
+    "StatusCode": 201,
+    "Port": 4200,
+    "Timestamp": "2026-04-09T19:24:56.906Z",
+    "Scheme": "http"
+  },
+  {
+    "Source": "192.168.65.1:39998",
+    "Destination": "localhost",
+    "RequestBody": "{\"deployments\": {\"id\": {\"any_\": [\"<chained from step 2>\"]}}, \"limit\": 50}",
+    "ResponseBody": "{\"deleted\": [\"<uuid>\"]}",
+    "RequestHeaders": {
+      "Content-Type": [
+        "application/json"
+      ]
+    },
+    "ResponseHeaders": {
+      "Content-Type": [
+        "application/json"
+      ]
+    },
+    "Method": "POST",
+    "Path": "/api/deployments/bulk_delete",
+    "QueryParams": {},
+    "StatusCode": 200,
+    "Port": 4200,
+    "Timestamp": "2026-04-09T19:24:56.906Z",
+    "Scheme": "http"
+  }
+]
