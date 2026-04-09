@@ -1,0 +1,1988 @@
+diff --git a/src/prefect/server/api/deployments.py b/src/prefect/server/api/deployments.py
+index 981d9806c..d2c656fe2 100644
+--- a/src/prefect/server/api/deployments.py
++++ b/src/prefect/server/api/deployments.py
+@@ -23,7 +23,12 @@ from prefect.server.database import PrefectDBInterface, provide_database_interfa
+ from prefect.server.exceptions import MissingVariableError, ObjectNotFoundError
+ from prefect.server.models.deployments import mark_deployments_ready
+ from prefect.server.models.workers import DEFAULT_AGENT_WORK_POOL_NAME
+-from prefect.server.schemas.responses import DeploymentPaginationResponse
++from prefect.server.schemas.responses import (
++    DeploymentBulkDeleteResponse,
++    DeploymentPaginationResponse,
++    FlowRunBulkCreateResponse,
++    FlowRunCreateResult,
++)
+ from prefect.server.utilities.server import PrefectRouter
+ from prefect.types import DateTime
+ from prefect.types._datetime import now
+@@ -605,6 +610,49 @@ async def delete_deployment(
+         )
+ 
+ 
++BULK_OPERATION_LIMIT = 50
++
++
++@router.post("/bulk_delete")
++async def bulk_delete_deployments(
++    deployments: Optional[schemas.filters.DeploymentFilter] = Body(
++        None, description="Filter criteria for deployments to delete"
++    ),
++    limit: int = Body(
++        BULK_OPERATION_LIMIT,
++        ge=1,
++        le=BULK_OPERATION_LIMIT,
++        description=f"Maximum number of deployments to delete. Defaults to {BULK_OPERATION_LIMIT}.",
++    ),
++    db: PrefectDBInterface = Depends(provide_database_interface),
++) -> DeploymentBulkDeleteResponse:
++    """
++    Bulk delete deployments matching the specified filter criteria.
++
++    Returns the IDs of deployments that were deleted.
++    """
++    async with db.session_context(begin_transaction=True) as session:
++        # Query matching deployments
++        db_deployments = await models.deployments.read_deployments(
++            session=session,
++            deployment_filter=deployments,
++            limit=limit,
++        )
++
++        if not db_deployments:
++            return DeploymentBulkDeleteResponse(deleted=[])
++
++        deployment_ids = [d.id for d in db_deployments]
++
++        # Delete deployments
++        deleted_ids = await models.deployments.delete_deployments(
++            session=session,
++            deployment_ids=deployment_ids,
++        )
++
++    return DeploymentBulkDeleteResponse(deleted=deleted_ids)
++
++
+ @router.post("/{id:uuid}/schedule")
+ async def schedule_deployment(
+     deployment_id: UUID = Path(..., description="The deployment id", alias="id"),
+@@ -842,6 +890,224 @@ async def create_flow_run_from_deployment(
+         )
+ 
+ 
++BULK_CREATE_LIMIT = 100
++
++
++@router.post("/{id:uuid}/create_flow_run/bulk")
++async def bulk_create_flow_runs_from_deployment(
++    flow_runs: List[schemas.actions.DeploymentFlowRunCreate] = Body(
++        ..., description="List of flow run configurations to create"
++    ),
++    deployment_id: UUID = Path(..., description="The deployment id", alias="id"),
++    created_by: Optional[schemas.core.CreatedBy] = Depends(dependencies.get_created_by),
++    db: PrefectDBInterface = Depends(provide_database_interface),
++    worker_lookups: WorkerLookups = Depends(WorkerLookups),
++) -> FlowRunBulkCreateResponse:
++    """
++    Create multiple flow runs from a deployment.
++
++    Any parameters not provided will be inferred from the deployment's parameters.
++    If tags are not provided, the deployment's tags will be used.
++
++    If no state is provided, the flow runs will be created in a SCHEDULED state.
++    """
++    if len(flow_runs) > BULK_CREATE_LIMIT:
++        raise HTTPException(
++            status_code=status.HTTP_400_BAD_REQUEST,
++            detail=f"Cannot create more than {BULK_CREATE_LIMIT} flow runs at once.",
++        )
++
++    results: List[FlowRunCreateResult] = []
++
++    async with db.session_context(begin_transaction=True) as session:
++        # Get the deployment once - do this before the empty check so we
++        # return 404 for non-existent deployments even with an empty list
++        deployment = await models.deployments.read_deployment(
++            session=session, deployment_id=deployment_id
++        )
++
++        if not deployment:
++            raise HTTPException(
++                status_code=status.HTTP_404_NOT_FOUND, detail="Deployment not found"
++            )
++
++        # Return early for empty list, but only after verifying deployment exists
++        if not flow_runs:
++            return FlowRunBulkCreateResponse(results=[])
++
++        # Pre-create unique work queues to avoid race conditions
++        # Collect unique work queue names that differ from the deployment's default
++        unique_work_queue_names = {
++            fr.work_queue_name
++            for fr in flow_runs
++            if fr.work_queue_name and fr.work_queue_name != deployment.work_queue_name
++        }
++
++        # Pre-create work queues if needed
++        if (
++            unique_work_queue_names
++            and deployment.work_queue
++            and deployment.work_queue.work_pool
++        ):
++            work_pool_name = deployment.work_queue.work_pool.name
++            for work_queue_name in unique_work_queue_names:
++                await worker_lookups._get_work_queue_id_from_name(
++                    session=session,
++                    work_pool_name=work_pool_name,
++                    work_queue_name=work_queue_name,
++                    create_queue_if_not_found=True,
++                )
++
++        # Build hydration context once
++        try:
++            ctx = await HydrationContext.build(
++                session=session,
++                raise_on_error=True,
++                render_jinja=True,
++                render_workspace_variables=True,
++            )
++        except HydrationError as exc:
++            raise HTTPException(
++                status.HTTP_400_BAD_REQUEST,
++                detail=f"Error building hydration context: {exc}",
++            )
++
++        # Process flow runs sequentially within the transaction
++        # (SQLAlchemy sessions are not safe for concurrent operations)
++        for flow_run_request in flow_runs:
++            try:
++                # Hydrate parameters
++                dehydrated_params = deployment.parameters.copy()
++                dehydrated_params.update(flow_run_request.parameters or {})
++                parameters = hydrate(dehydrated_params, ctx)
++
++                # Default and override for enforce_parameter_schema
++                enforce_parameter_schema = deployment.enforce_parameter_schema
++                if flow_run_request.enforce_parameter_schema is not None:
++                    enforce_parameter_schema = flow_run_request.enforce_parameter_schema
++
++                # Validate parameters if schema enforcement is enabled
++                if enforce_parameter_schema:
++                    if not isinstance(deployment.parameter_openapi_schema, dict):
++                        results.append(
++                            FlowRunCreateResult(
++                                status="FAILED",
++                                error="Parameter schema enforcement is enabled but deployment has no valid schema.",
++                            )
++                        )
++                        continue
++                    try:
++                        validate(
++                            parameters,
++                            deployment.parameter_openapi_schema,
++                            raise_on_error=True,
++                        )
++                    except ValidationError as exc:
++                        results.append(
++                            FlowRunCreateResult(
++                                status="FAILED",
++                                error=f"Parameter validation failed: {exc}",
++                            )
++                        )
++                        continue
++                    except CircularSchemaRefError:
++                        results.append(
++                            FlowRunCreateResult(
++                                status="FAILED",
++                                error="Invalid schema: circular references detected.",
++                            )
++                        )
++                        continue
++
++                # Validate job variables
++                try:
++                    await validate_job_variables_for_deployment_flow_run(
++                        session, deployment, flow_run_request
++                    )
++                except HTTPException as exc:
++                    results.append(
++                        FlowRunCreateResult(
++                            status="FAILED",
++                            error=str(exc.detail),
++                        )
++                    )
++                    continue
++
++                # Determine work queue
++                work_queue_name = deployment.work_queue_name
++                work_queue_id = deployment.work_queue_id
++
++                if flow_run_request.work_queue_name:
++                    if (
++                        deployment.work_queue is None
++                        or deployment.work_queue.work_pool is None
++                    ):
++                        results.append(
++                            FlowRunCreateResult(
++                                status="FAILED",
++                                error=f"Cannot create flow run in work queue {flow_run_request.work_queue_name} because deployment is not associated with a work pool.",
++                            )
++                        )
++                        continue
++
++                    work_queue_id = await worker_lookups._get_work_queue_id_from_name(
++                        session=session,
++                        work_pool_name=deployment.work_queue.work_pool.name,
++                        work_queue_name=flow_run_request.work_queue_name,
++                        create_queue_if_not_found=True,
++                    )
++                    work_queue_name = flow_run_request.work_queue_name
++
++                # Create the flow run model
++                flow_run_model = schemas.core.FlowRun(
++                    **flow_run_request.model_dump(
++                        exclude={
++                            "parameters",
++                            "tags",
++                            "infrastructure_document_id",
++                            "work_queue_name",
++                            "enforce_parameter_schema",
++                        }
++                    ),
++                    flow_id=deployment.flow_id,
++                    deployment_id=deployment.id,
++                    deployment_version=deployment.version,
++                    parameters=parameters,
++                    tags=set(deployment.tags).union(flow_run_request.tags),
++                    infrastructure_document_id=(
++                        flow_run_request.infrastructure_document_id
++                        or deployment.infrastructure_document_id
++                    ),
++                    work_queue_name=work_queue_name,
++                    work_queue_id=work_queue_id,
++                    created_by=created_by,
++                )
++
++                if not flow_run_model.state:
++                    flow_run_model.state = schemas.states.Scheduled()
++
++                model = await models.flow_runs.create_flow_run(
++                    session=session, flow_run=flow_run_model
++                )
++
++                results.append(
++                    FlowRunCreateResult(
++                        flow_run_id=model.id,
++                        status="CREATED",
++                    )
++                )
++
++            except Exception as exc:
++                results.append(
++                    FlowRunCreateResult(
++                        status="FAILED",
++                        error=str(exc),
++                    )
++                )
++
++    return FlowRunBulkCreateResponse(results=results)
++
++
+ # DEPRECATED
+ @router.get("/{id:uuid}/work_queue_check", deprecated=True)
+ async def work_queue_check_for_deployment(
+diff --git a/src/prefect/server/api/flow_runs.py b/src/prefect/server/api/flow_runs.py
+index cdf20822c..b32036d76 100644
+--- a/src/prefect/server/api/flow_runs.py
++++ b/src/prefect/server/api/flow_runs.py
+@@ -46,6 +46,9 @@ from prefect.server.orchestration.policies import (
+ )
+ from prefect.server.schemas.graph import Graph
+ from prefect.server.schemas.responses import (
++    FlowRunBulkDeleteResponse,
++    FlowRunBulkSetStateResponse,
++    FlowRunOrchestrationResult,
+     FlowRunPaginationResponse,
+     OrchestrationResult,
+ )
+@@ -609,6 +612,142 @@ async def delete_flow_run_logs(
+         )
+ 
+ 
++BULK_OPERATION_LIMIT = 50
++
++
++@router.post("/bulk_delete")
++async def bulk_delete_flow_runs(
++    docket: dependencies.Docket,
++    flow_runs: Optional[schemas.filters.FlowRunFilter] = Body(
++        None, description="Filter criteria for flow runs to delete"
++    ),
++    limit: int = Body(
++        BULK_OPERATION_LIMIT,
++        ge=1,
++        le=BULK_OPERATION_LIMIT,
++        description=f"Maximum number of flow runs to delete. Defaults to {BULK_OPERATION_LIMIT}.",
++    ),
++    db: PrefectDBInterface = Depends(provide_database_interface),
++) -> FlowRunBulkDeleteResponse:
++    """
++    Bulk delete flow runs matching the specified filter criteria.
++
++    Returns the IDs of flow runs that were deleted.
++    """
++    async with db.session_context(begin_transaction=True) as session:
++        # Query matching flow runs
++        db_flow_runs = await models.flow_runs.read_flow_runs(
++            session=session,
++            flow_run_filter=flow_runs,
++            limit=limit,
++        )
++
++        if not db_flow_runs:
++            return FlowRunBulkDeleteResponse(deleted=[])
++
++        flow_run_ids = [fr.id for fr in db_flow_runs]
++
++        # Delete flow runs
++        deleted_ids = await models.flow_runs.delete_flow_runs(
++            session=session,
++            flow_run_ids=flow_run_ids,
++        )
++
++    # Queue log cleanup for each deleted flow run
++    for flow_run_id in deleted_ids:
++        await docket.add(
++            delete_flow_run_logs,
++            key=f"delete_flow_run_logs:{flow_run_id}",
++        )(flow_run_id=flow_run_id)
++
++    return FlowRunBulkDeleteResponse(deleted=deleted_ids)
++
++
++@router.post("/bulk_set_state")
++async def bulk_set_flow_run_state(
++    flow_runs: Optional[schemas.filters.FlowRunFilter] = Body(
++        None, description="Filter criteria for flow runs to update"
++    ),
++    state: schemas.actions.StateCreate = Body(..., description="The state to set"),
++    force: bool = Body(
++        False,
++        description=(
++            "If false, orchestration rules will be applied that may alter or prevent"
++            " the state transition. If True, orchestration rules are not applied."
++        ),
++    ),
++    limit: int = Body(
++        BULK_OPERATION_LIMIT,
++        ge=1,
++        le=BULK_OPERATION_LIMIT,
++        description=f"Maximum number of flow runs to update. Defaults to {BULK_OPERATION_LIMIT}.",
++    ),
++    db: PrefectDBInterface = Depends(provide_database_interface),
++    flow_policy: type[FlowRunOrchestrationPolicy] = Depends(
++        orchestration_dependencies.provide_flow_policy
++    ),
++    orchestration_parameters: Dict[str, Any] = Depends(
++        orchestration_dependencies.provide_flow_orchestration_parameters
++    ),
++    api_version: str = Depends(dependencies.provide_request_api_version),
++    client_version: Optional[str] = Depends(dependencies.get_prefect_client_version),
++) -> FlowRunBulkSetStateResponse:
++    """
++    Bulk set state for flow runs matching the specified filter criteria.
++
++    Returns the orchestration results for each flow run.
++    """
++    orchestration_parameters.update({"api-version": api_version})
++
++    async with db.session_context() as session:
++        # Query matching flow runs
++        db_flow_runs = await models.flow_runs.read_flow_runs(
++            session=session,
++            flow_run_filter=flow_runs,
++            limit=limit,
++        )
++
++    if not db_flow_runs:
++        return FlowRunBulkSetStateResponse(results=[])
++
++    results: List[FlowRunOrchestrationResult] = []
++
++    # Process flow runs sequentially to avoid session conflicts
++    for flow_run in db_flow_runs:
++        async with db.session_context(
++            begin_transaction=True, with_for_update=True
++        ) as session:
++            try:
++                orchestration_result = await models.flow_runs.set_flow_run_state(
++                    session=session,
++                    flow_run_id=flow_run.id,
++                    state=schemas.states.State.model_validate(state),
++                    force=force,
++                    flow_policy=flow_policy,
++                    orchestration_parameters=orchestration_parameters,
++                    client_version=client_version,
++                )
++                results.append(
++                    FlowRunOrchestrationResult(
++                        flow_run_id=flow_run.id,
++                        status=orchestration_result.status,
++                        state=orchestration_result.state,
++                        details=orchestration_result.details,
++                    )
++                )
++            except Exception as e:
++                results.append(
++                    FlowRunOrchestrationResult(
++                        flow_run_id=flow_run.id,
++                        status=schemas.responses.SetStateStatus.ABORT,
++                        state=None,
++                        details=schemas.responses.StateAbortDetails(reason=str(e)),
++                    )
++                )
++
++    return FlowRunBulkSetStateResponse(results=results)
++
++
+ @router.post("/{id:uuid}/set_state")
+ async def set_flow_run_state(
+     response: Response,
+diff --git a/src/prefect/server/api/flows.py b/src/prefect/server/api/flows.py
+index 6bb6faf07..04142110b 100644
+--- a/src/prefect/server/api/flows.py
++++ b/src/prefect/server/api/flows.py
+@@ -12,7 +12,10 @@ import prefect.server.api.dependencies as dependencies
+ import prefect.server.models as models
+ import prefect.server.schemas as schemas
+ from prefect.server.database import PrefectDBInterface, provide_database_interface
+-from prefect.server.schemas.responses import FlowPaginationResponse
++from prefect.server.schemas.responses import (
++    FlowBulkDeleteResponse,
++    FlowPaginationResponse,
++)
+ from prefect.server.utilities.server import PrefectRouter
+ from prefect.types._datetime import now
+ 
+@@ -164,6 +167,51 @@ async def delete_flow(
+         )
+ 
+ 
++BULK_OPERATION_LIMIT = 50
++
++
++@router.post("/bulk_delete")
++async def bulk_delete_flows(
++    flows: Optional[schemas.filters.FlowFilter] = Body(
++        None, description="Filter criteria for flows to delete"
++    ),
++    limit: int = Body(
++        BULK_OPERATION_LIMIT,
++        ge=1,
++        le=BULK_OPERATION_LIMIT,
++        description=f"Maximum number of flows to delete. Defaults to {BULK_OPERATION_LIMIT}.",
++    ),
++    db: PrefectDBInterface = Depends(provide_database_interface),
++) -> FlowBulkDeleteResponse:
++    """
++    Bulk delete flows matching the specified filter criteria.
++
++    This also deletes all associated deployments.
++
++    Returns the IDs of flows that were deleted.
++    """
++    async with db.session_context(begin_transaction=True) as session:
++        # Query matching flows
++        db_flows = await models.flows.read_flows(
++            session=session,
++            flow_filter=flows,
++            limit=limit,
++        )
++
++        if not db_flows:
++            return FlowBulkDeleteResponse(deleted=[])
++
++        flow_ids = [f.id for f in db_flows]
++
++        # Delete flows (and their deployments)
++        deleted_ids = await models.flows.delete_flows(
++            session=session,
++            flow_ids=flow_ids,
++        )
++
++    return FlowBulkDeleteResponse(deleted=deleted_ids)
++
++
+ @router.post("/paginate")
+ async def paginate_flows(
+     limit: int = dependencies.LimitBody(),
+diff --git a/src/prefect/server/models/deployments.py b/src/prefect/server/models/deployments.py
+index 77fcfc914..2a5e73c61 100644
+--- a/src/prefect/server/models/deployments.py
++++ b/src/prefect/server/models/deployments.py
+@@ -606,6 +606,59 @@ async def _delete_related_concurrency_limit(
+     )
+ 
+ 
++@db_injector
++async def delete_deployments(
++    db: PrefectDBInterface,
++    session: AsyncSession,
++    deployment_ids: list[UUID],
++) -> list[UUID]:
++    """
++    Delete multiple deployments by their IDs.
++
++    Args:
++        session: A database session
++        deployment_ids: a list of deployment ids to delete
++
++    Returns:
++        List[UUID]: the IDs of the deployments that were deleted
++    """
++    if not deployment_ids:
++        return []
++
++    # Get existing deployment IDs
++    result = await session.execute(
++        select(db.Deployment.id).where(db.Deployment.id.in_(deployment_ids))
++    )
++    existing_ids = list(result.scalars().all())
++
++    if not existing_ids:
++        return []
++
++    # Delete scheduled runs for all deployments
++    for deployment_id in existing_ids:
++        await _delete_scheduled_runs(
++            session=session, deployment_id=deployment_id, auto_scheduled_only=False
++        )
++
++    # Delete related concurrency limits
++    await session.execute(
++        delete(db.ConcurrencyLimitV2).where(
++            db.ConcurrencyLimitV2.id.in_(
++                select(db.Deployment.concurrency_limit_id).where(
++                    db.Deployment.id.in_(existing_ids)
++                )
++            )
++        )
++    )
++
++    # Delete all deployments
++    await session.execute(
++        delete(db.Deployment).where(db.Deployment.id.in_(existing_ids))
++    )
++
++    return existing_ids
++
++
+ @db_injector
+ async def schedule_runs(
+     db: PrefectDBInterface,
+diff --git a/src/prefect/server/models/flow_runs.py b/src/prefect/server/models/flow_runs.py
+index 4538d6ec1..35182b0be 100644
+--- a/src/prefect/server/models/flow_runs.py
++++ b/src/prefect/server/models/flow_runs.py
+@@ -504,6 +504,48 @@ async def delete_flow_run(
+     return result.rowcount > 0
+ 
+ 
++@db_injector
++async def delete_flow_runs(
++    db: PrefectDBInterface,
++    session: AsyncSession,
++    flow_run_ids: List[UUID],
++) -> List[UUID]:
++    """
++    Delete multiple flow runs by their IDs, handling concurrency limits.
++
++    Args:
++        session: A database session
++        flow_run_ids: a list of flow run ids to delete
++
++    Returns:
++        List[UUID]: the IDs of the flow runs that were deleted
++    """
++    if not flow_run_ids:
++        return []
++
++    # Read all flow runs to handle concurrency cleanup
++    flow_runs = await session.execute(
++        select(db.FlowRun).where(db.FlowRun.id.in_(flow_run_ids))
++    )
++    flow_run_list = flow_runs.scalars().all()
++
++    if not flow_run_list:
++        return []
++
++    # Cleanup concurrency slots for each flow run that has a deployment
++    for flow_run in flow_run_list:
++        if flow_run.deployment_id:
++            await cleanup_flow_run_concurrency_slots(session=session, flow_run=flow_run)
++
++    # Get the IDs of flow runs that exist
++    existing_ids = [fr.id for fr in flow_run_list]
++
++    # Delete all flow runs in one query
++    await session.execute(delete(db.FlowRun).where(db.FlowRun.id.in_(existing_ids)))
++
++    return existing_ids
++
++
+ async def set_flow_run_state(
+     session: AsyncSession,
+     flow_run_id: UUID,
+diff --git a/src/prefect/server/models/flows.py b/src/prefect/server/models/flows.py
+index 32369cfc8..505e196e3 100644
+--- a/src/prefect/server/models/flows.py
++++ b/src/prefect/server/models/flows.py
+@@ -3,7 +3,7 @@ Functions for interacting with flow ORM objects.
+ Intended for internal use by the Prefect REST API.
+ """
+ 
+-from typing import Optional, Sequence, TypeVar, Union
++from typing import List, Optional, Sequence, TypeVar, Union
+ from uuid import UUID
+ 
+ import sqlalchemy as sa
+@@ -290,6 +290,45 @@ async def delete_flow(
+     return result.rowcount > 0
+ 
+ 
++@db_injector
++async def delete_flows(
++    db: PrefectDBInterface,
++    session: AsyncSession,
++    flow_ids: List[UUID],
++) -> List[UUID]:
++    """
++    Delete multiple flows by their IDs.
++
++    This also deletes all associated deployments (hard delete).
++
++    Args:
++        session: A database session
++        flow_ids: a list of flow ids to delete
++
++    Returns:
++        List[UUID]: the IDs of the flows that were deleted
++    """
++    if not flow_ids:
++        return []
++
++    # Get existing flow IDs
++    result = await session.execute(select(db.Flow.id).where(db.Flow.id.in_(flow_ids)))
++    existing_ids = list(result.scalars().all())
++
++    if not existing_ids:
++        return []
++
++    # Delete associated deployments (hard delete - cascade will handle related data)
++    await session.execute(
++        delete(db.Deployment).where(db.Deployment.flow_id.in_(existing_ids))
++    )
++
++    # Delete the flows
++    await session.execute(delete(db.Flow).where(db.Flow.id.in_(existing_ids)))
++
++    return existing_ids
++
++
+ @db_injector
+ async def read_flow_labels(
+     db: PrefectDBInterface,
+diff --git a/src/prefect/server/schemas/filters.py b/src/prefect/server/schemas/filters.py
+index 942da781f..58c1b4627 100644
+--- a/src/prefect/server/schemas/filters.py
++++ b/src/prefect/server/schemas/filters.py
+@@ -92,6 +92,9 @@ class FlowFilterId(PrefectFilterBaseModel):
+     any_: Optional[list[UUID]] = Field(
+         default=None, description="A list of flow ids to include"
+     )
++    not_any_: Optional[list[UUID]] = Field(
++        default=None, description="A list of flow ids to exclude"
++    )
+ 
+     def _get_filter_list(
+         self, db: "PrefectDBInterface"
+@@ -99,6 +102,8 @@ class FlowFilterId(PrefectFilterBaseModel):
+         filters: list[sa.ColumnExpressionArgument[bool]] = []
+         if self.any_ is not None:
+             filters.append(db.Flow.id.in_(self.any_))
++        if self.not_any_ is not None:
++            filters.append(db.Flow.id.not_in(self.not_any_))
+         return filters
+ 
+ 
+diff --git a/src/prefect/server/schemas/responses.py b/src/prefect/server/schemas/responses.py
+index e6c41170e..190793516 100644
+--- a/src/prefect/server/schemas/responses.py
++++ b/src/prefect/server/schemas/responses.py
+@@ -665,3 +665,53 @@ SchemaValueError = Union[str, SchemaValuePropertyError, SchemaValueIndexError]
+ class SchemaValuesValidationResponse(BaseModel):
+     errors: List[SchemaValueError]
+     valid: bool
++
++
++# Bulk operation response schemas
++
++
++class FlowRunBulkDeleteResponse(PrefectBaseModel):
++    """Response from bulk flow run deletion."""
++
++    deleted: List[UUID] = Field(default_factory=list)
++
++
++class DeploymentBulkDeleteResponse(PrefectBaseModel):
++    """Response from bulk deployment deletion."""
++
++    deleted: List[UUID] = Field(default_factory=list)
++
++
++class FlowBulkDeleteResponse(PrefectBaseModel):
++    """Response from bulk flow deletion."""
++
++    deleted: List[UUID] = Field(default_factory=list)
++
++
++class FlowRunOrchestrationResult(PrefectBaseModel):
++    """Per-run result for bulk state operations."""
++
++    flow_run_id: UUID
++    status: SetStateStatus
++    state: Optional[schemas.states.State] = None
++    details: StateResponseDetails
++
++
++class FlowRunBulkSetStateResponse(PrefectBaseModel):
++    """Response from bulk set state operation."""
++
++    results: List[FlowRunOrchestrationResult] = Field(default_factory=list)
++
++
++class FlowRunCreateResult(PrefectBaseModel):
++    """Per-run result for bulk create operations."""
++
++    flow_run_id: Optional[UUID] = None
++    status: Literal["CREATED", "FAILED"]
++    error: Optional[str] = None
++
++
++class FlowRunBulkCreateResponse(PrefectBaseModel):
++    """Response from bulk flow run creation."""
++
++    results: List[FlowRunCreateResult] = Field(default_factory=list)
+diff --git a/tests/server/orchestration/api/test_bulk_operations.py b/tests/server/orchestration/api/test_bulk_operations.py
+new file mode 100644
+index 000000000..fd27db090
+--- /dev/null
++++ b/tests/server/orchestration/api/test_bulk_operations.py
+@@ -0,0 +1,1207 @@
++"""
++Comprehensive tests for bulk operation endpoints.
++
++These tests cover:
++- Basic bulk operations
++- Validation errors (limit bounds)
++- Filter edge cases
++- Verification of actual deletion
++- Cascading deletes
++- Mixed results for state changes
++- Parameter validation
++"""
++
++from datetime import datetime, timedelta, timezone
++from uuid import uuid4
++
++from starlette import status
++
++from prefect.server import models, schemas
++
++
++class TestFlowRunBulkDelete:
++    """Tests for POST /flow_runs/bulk_delete endpoint."""
++
++    async def test_bulk_delete_flow_runs(
++        self,
++        session,
++        flow,
++        hosted_api_client,
++    ):
++        """Test basic bulk deletion of flow runs."""
++        # Create flow runs
++        flow_runs = []
++        for _ in range(3):
++            flow_run = await models.flow_runs.create_flow_run(
++                session=session,
++                flow_run=schemas.core.FlowRun(
++                    flow_id=flow.id,
++                    state=schemas.states.Pending(),
++                ),
++            )
++            flow_runs.append(flow_run)
++        await session.commit()
++
++        # Bulk delete
++        response = await hosted_api_client.post(
++            "/flow_runs/bulk_delete",
++            json={
++                "flow_runs": {"id": {"any_": [str(fr.id) for fr in flow_runs[:2]]}},
++            },
++        )
++        assert response.status_code == status.HTTP_200_OK
++        data = response.json()
++        assert len(data["deleted"]) == 2
++        assert set(data["deleted"]) == {str(flow_runs[0].id), str(flow_runs[1].id)}
++
++    async def test_bulk_delete_verifies_actual_deletion(
++        self,
++        session,
++        flow,
++        hosted_api_client,
++        client,
++    ):
++        """Test that deleted flow runs are actually gone from the database."""
++        flow_run = await models.flow_runs.create_flow_run(
++            session=session,
++            flow_run=schemas.core.FlowRun(
++                flow_id=flow.id,
++                state=schemas.states.Pending(),
++            ),
++        )
++        await session.commit()
++
++        # Delete the flow run
++        response = await hosted_api_client.post(
++            "/flow_runs/bulk_delete",
++            json={"flow_runs": {"id": {"any_": [str(flow_run.id)]}}},
++        )
++        assert response.status_code == status.HTTP_200_OK
++        assert str(flow_run.id) in response.json()["deleted"]
++
++        # Verify it's actually deleted
++        response = await client.get(f"/flow_runs/{flow_run.id}")
++        assert response.status_code == status.HTTP_404_NOT_FOUND
++
++    async def test_bulk_delete_with_invalid_ids(
++        self,
++        session,
++        flow,
++        hosted_api_client,
++    ):
++        """Test that only valid flow runs are deleted, invalid IDs are ignored."""
++        # Create 1 valid flow run
++        flow_run = await models.flow_runs.create_flow_run(
++            session=session,
++            flow_run=schemas.core.FlowRun(
++                flow_id=flow.id,
++                state=schemas.states.Pending(),
++            ),
++        )
++        await session.commit()
++
++        invalid_id = uuid4()
++        response = await hosted_api_client.post(
++            "/flow_runs/bulk_delete",
++            json={
++                "flow_runs": {"id": {"any_": [str(flow_run.id), str(invalid_id)]}},
++            },
++        )
++        assert response.status_code == status.HTTP_200_OK
++        body = response.json()
++        # Only the valid run should be deleted
++        assert len(body["deleted"]) == 1
++        assert body["deleted"][0] == str(flow_run.id)
++
++    async def test_bulk_delete_flow_runs_empty_filter(
++        self,
++        hosted_api_client,
++    ):
++        """Test bulk deletion with empty filter returns empty list."""
++        response = await hosted_api_client.post(
++            "/flow_runs/bulk_delete",
++            json={
++                "flow_runs": {"id": {"any_": [str(uuid4())]}},
++            },
++        )
++        assert response.status_code == status.HTTP_200_OK
++        data = response.json()
++        assert data["deleted"] == []
++
++    async def test_bulk_delete_flow_runs_respects_limit(
++        self,
++        session,
++        flow,
++        hosted_api_client,
++    ):
++        """Test bulk deletion respects limit."""
++        # Create flow runs
++        flow_runs = []
++        for _ in range(5):
++            flow_run = await models.flow_runs.create_flow_run(
++                session=session,
++                flow_run=schemas.core.FlowRun(
++                    flow_id=flow.id,
++                    state=schemas.states.Pending(),
++                ),
++            )
++            flow_runs.append(flow_run)
++        await session.commit()
++
++        # Bulk delete with limit
++        response = await hosted_api_client.post(
++            "/flow_runs/bulk_delete",
++            json={
++                "flow_runs": {"id": {"any_": [str(fr.id) for fr in flow_runs]}},
++                "limit": 2,
++            },
++        )
++        assert response.status_code == status.HTTP_200_OK
++        data = response.json()
++        assert len(data["deleted"]) == 2
++
++    async def test_bulk_delete_flow_runs_no_filter(
++        self,
++        session,
++        flow,
++        hosted_api_client,
++    ):
++        """Test bulk deletion with no filter."""
++        # Create flow runs
++        for _ in range(3):
++            await models.flow_runs.create_flow_run(
++                session=session,
++                flow_run=schemas.core.FlowRun(
++                    flow_id=flow.id,
++                    state=schemas.states.Pending(),
++                ),
++            )
++        await session.commit()
++
++        # Bulk delete with no filter - should delete up to limit
++        response = await hosted_api_client.post(
++            "/flow_runs/bulk_delete",
++            json={"limit": 2},
++        )
++        assert response.status_code == status.HTTP_200_OK
++        data = response.json()
++        assert len(data["deleted"]) == 2
++
++    async def test_bulk_delete_validation_limit_zero(
++        self,
++        hosted_api_client,
++    ):
++        """Test that limit=0 returns 422."""
++        response = await hosted_api_client.post(
++            "/flow_runs/bulk_delete",
++            json={
++                "flow_runs": {},
++                "limit": 0,
++            },
++        )
++        assert response.status_code == 422
++
++    async def test_bulk_delete_validation_limit_too_high(
++        self,
++        hosted_api_client,
++    ):
++        """Test that limit > max returns 422."""
++        response = await hosted_api_client.post(
++            "/flow_runs/bulk_delete",
++            json={
++                "flow_runs": {},
++                "limit": 201,
++            },
++        )
++        assert response.status_code == 422
++
++    async def test_bulk_delete_by_state_name(
++        self,
++        session,
++        flow,
++        hosted_api_client,
++    ):
++        """Test deleting flow runs filtered by state name (e.g., late runs)."""
++        now = datetime.now(timezone.utc)
++
++        # Create late runs (Scheduled state with name "Late")
++        late_runs = []
++        for i in range(3):
++            flow_run = await models.flow_runs.create_flow_run(
++                session=session,
++                flow_run=schemas.core.FlowRun(
++                    flow_id=flow.id,
++                    name=f"late-run-{i}",
++                    state=schemas.states.Scheduled(
++                        name="Late", scheduled_time=now - timedelta(hours=2)
++                    ),
++                    expected_start_time=now - timedelta(hours=2),
++                ),
++            )
++            late_runs.append(flow_run)
++
++        # Create on-time scheduled runs that should NOT be deleted
++        future_run = await models.flow_runs.create_flow_run(
++            session=session,
++            flow_run=schemas.core.FlowRun(
++                flow_id=flow.id,
++                name="future-run",
++                state=schemas.states.Scheduled(scheduled_time=now + timedelta(hours=1)),
++            ),
++        )
++
++        # Create a running run
++        running_run = await models.flow_runs.create_flow_run(
++            session=session,
++            flow_run=schemas.core.FlowRun(
++                flow_id=flow.id,
++                name="running-run",
++                state=schemas.states.Running(),
++            ),
++        )
++        await session.commit()
++
++        # Delete all late flow runs (by state name "Late")
++        response = await hosted_api_client.post(
++            "/flow_runs/bulk_delete",
++            json={
++                "flow_runs": {"state": {"name": {"any_": ["Late"]}}},
++            },
++        )
++        assert response.status_code == status.HTTP_200_OK
++        result = response.json()
++        assert len(result["deleted"]) == 3
++
++        # Verify late runs deleted, others remain
++        for run in late_runs:
++            assert str(run.id) in result["deleted"]
++        assert str(future_run.id) not in result["deleted"]
++        assert str(running_run.id) not in result["deleted"]
++
++    async def test_bulk_delete_by_state_type(
++        self,
++        session,
++        flow,
++        hosted_api_client,
++    ):
++        """Test deleting flow runs filtered by state type."""
++        # Create runs in different states
++        pending_run = await models.flow_runs.create_flow_run(
++            session=session,
++            flow_run=schemas.core.FlowRun(
++                flow_id=flow.id,
++                state=schemas.states.Pending(),
++            ),
++        )
++        running_run = await models.flow_runs.create_flow_run(
++            session=session,
++            flow_run=schemas.core.FlowRun(
++                flow_id=flow.id,
++                state=schemas.states.Running(),
++            ),
++        )
++        completed_run = await models.flow_runs.create_flow_run(
++            session=session,
++            flow_run=schemas.core.FlowRun(
++                flow_id=flow.id,
++                state=schemas.states.Completed(),
++            ),
++        )
++        await session.commit()
++
++        # Delete only PENDING runs
++        response = await hosted_api_client.post(
++            "/flow_runs/bulk_delete",
++            json={
++                "flow_runs": {"state": {"type": {"any_": ["PENDING"]}}},
++            },
++        )
++        assert response.status_code == status.HTTP_200_OK
++        result = response.json()
++        assert len(result["deleted"]) == 1
++        assert str(pending_run.id) in result["deleted"]
++        assert str(running_run.id) not in result["deleted"]
++        assert str(completed_run.id) not in result["deleted"]
++
++
++class TestFlowRunBulkSetState:
++    """Tests for POST /flow_runs/bulk_set_state endpoint."""
++
++    async def test_bulk_set_state(
++        self,
++        session,
++        flow,
++        client,
++    ):
++        """Test bulk state setting for flow runs."""
++        # Create flow runs
++        flow_runs = []
++        for _ in range(3):
++            flow_run = await models.flow_runs.create_flow_run(
++                session=session,
++                flow_run=schemas.core.FlowRun(
++                    flow_id=flow.id,
++                    state=schemas.states.Pending(),
++                ),
++            )
++            flow_runs.append(flow_run)
++        await session.commit()
++
++        # Bulk set state
++        response = await client.post(
++            "/flow_runs/bulk_set_state",
++            json={
++                "flow_runs": {"id": {"any_": [str(fr.id) for fr in flow_runs[:2]]}},
++                "state": {"type": "CANCELLED", "name": "Cancelled"},
++                "force": True,
++            },
++        )
++        assert response.status_code == status.HTTP_200_OK
++        data = response.json()
++        assert len(data["results"]) == 2
++        for result in data["results"]:
++            assert result["status"] == "ACCEPT"
++
++    async def test_bulk_set_state_verifies_state_change(
++        self,
++        session,
++        flow,
++        client,
++    ):
++        """Test that the state is actually changed in the database."""
++        flow_run = await models.flow_runs.create_flow_run(
++            session=session,
++            flow_run=schemas.core.FlowRun(
++                flow_id=flow.id,
++                state=schemas.states.Pending(),
++            ),
++        )
++        await session.commit()
++
++        # Set state to cancelled
++        response = await client.post(
++            "/flow_runs/bulk_set_state",
++            json={
++                "flow_runs": {"id": {"any_": [str(flow_run.id)]}},
++                "state": {"type": "CANCELLED"},
++                "force": True,
++            },
++        )
++        assert response.status_code == status.HTTP_200_OK
++
++        # Verify the state changed
++        response = await client.get(f"/flow_runs/{flow_run.id}")
++        assert response.status_code == status.HTTP_200_OK
++        assert response.json()["state"]["type"] == "CANCELLED"
++
++    async def test_bulk_set_state_with_force(
++        self,
++        session,
++        flow,
++        client,
++    ):
++        """Test force=True bypasses orchestration rules."""
++        # Create a completed flow run
++        flow_run = await models.flow_runs.create_flow_run(
++            session=session,
++            flow_run=schemas.core.FlowRun(
++                flow_id=flow.id,
++                state=schemas.states.Completed(),
++            ),
++        )
++        await session.commit()
++
++        # Normally COMPLETED -> RUNNING would be rejected, but force=True bypasses
++        response = await client.post(
++            "/flow_runs/bulk_set_state",
++            json={
++                "flow_runs": {"id": {"any_": [str(flow_run.id)]}},
++                "state": {"type": "RUNNING"},
++                "force": True,
++            },
++        )
++        assert response.status_code == status.HTTP_200_OK
++        result = response.json()
++        assert len(result["results"]) == 1
++        assert result["results"][0]["status"] == "ACCEPT"
++        assert result["results"][0]["state"]["type"] == "RUNNING"
++
++    async def test_bulk_set_state_multiple_flow_runs_different_states(
++        self,
++        session,
++        flow,
++        client,
++    ):
++        """Test bulk state change with flow runs in different states."""
++        pending_run = await models.flow_runs.create_flow_run(
++            session=session,
++            flow_run=schemas.core.FlowRun(
++                flow_id=flow.id,
++                name="pending-run",
++                state=schemas.states.Pending(),
++            ),
++        )
++        running_run = await models.flow_runs.create_flow_run(
++            session=session,
++            flow_run=schemas.core.FlowRun(
++                flow_id=flow.id,
++                name="running-run",
++                state=schemas.states.Running(),
++            ),
++        )
++        await session.commit()
++
++        response = await client.post(
++            "/flow_runs/bulk_set_state",
++            json={
++                "flow_runs": {
++                    "id": {"any_": [str(pending_run.id), str(running_run.id)]}
++                },
++                "state": {"type": "CANCELLED"},
++            },
++        )
++        assert response.status_code == status.HTTP_200_OK
++        result = response.json()
++        assert len(result["results"]) == 2
++
++        # Both should be processed (accepted since CANCELLED is valid target)
++        for item in result["results"]:
++            assert item["status"] == "ACCEPT"
++            assert item["state"]["type"] == "CANCELLED"
++
++    async def test_bulk_set_state_empty_filter(
++        self,
++        client,
++    ):
++        """Test bulk set state with empty filter returns empty list."""
++        response = await client.post(
++            "/flow_runs/bulk_set_state",
++            json={
++                "flow_runs": {"id": {"any_": [str(uuid4())]}},
++                "state": {"type": "CANCELLED", "name": "Cancelled"},
++            },
++        )
++        assert response.status_code == status.HTTP_200_OK
++        data = response.json()
++        assert data["results"] == []
++
++    async def test_bulk_set_state_respects_limit(
++        self,
++        session,
++        flow,
++        client,
++    ):
++        """Test bulk set state respects limit."""
++        # Create flow runs
++        flow_runs = []
++        for _ in range(5):
++            flow_run = await models.flow_runs.create_flow_run(
++                session=session,
++                flow_run=schemas.core.FlowRun(
++                    flow_id=flow.id,
++                    state=schemas.states.Pending(),
++                ),
++            )
++            flow_runs.append(flow_run)
++        await session.commit()
++
++        # Bulk set state with limit
++        response = await client.post(
++            "/flow_runs/bulk_set_state",
++            json={
++                "flow_runs": {"id": {"any_": [str(fr.id) for fr in flow_runs]}},
++                "state": {"type": "CANCELLED", "name": "Cancelled"},
++                "force": True,
++                "limit": 2,
++            },
++        )
++        assert response.status_code == status.HTTP_200_OK
++        data = response.json()
++        assert len(data["results"]) == 2
++
++    async def test_bulk_set_state_validation_limit_zero(
++        self,
++        client,
++    ):
++        """Test that limit=0 returns 422."""
++        response = await client.post(
++            "/flow_runs/bulk_set_state",
++            json={
++                "flow_runs": {},
++                "state": {"type": "CANCELLED"},
++                "limit": 0,
++            },
++        )
++        assert response.status_code == 422
++
++    async def test_bulk_set_state_validation_limit_too_high(
++        self,
++        client,
++    ):
++        """Test that limit > max returns 422."""
++        response = await client.post(
++            "/flow_runs/bulk_set_state",
++            json={
++                "flow_runs": {},
++                "state": {"type": "CANCELLED"},
++                "limit": 51,
++            },
++        )
++        assert response.status_code == 422
++
++    async def test_bulk_set_state_by_state_filter(
++        self,
++        session,
++        flow,
++        client,
++    ):
++        """Test bulk state change filtered by current state type."""
++        # Create runs in different states
++        pending_runs = []
++        for i in range(2):
++            run = await models.flow_runs.create_flow_run(
++                session=session,
++                flow_run=schemas.core.FlowRun(
++                    flow_id=flow.id,
++                    state=schemas.states.Pending(),
++                ),
++            )
++            pending_runs.append(run)
++
++        running_run = await models.flow_runs.create_flow_run(
++            session=session,
++            flow_run=schemas.core.FlowRun(
++                flow_id=flow.id,
++                state=schemas.states.Running(),
++            ),
++        )
++        await session.commit()
++
++        # Cancel only PENDING runs
++        response = await client.post(
++            "/flow_runs/bulk_set_state",
++            json={
++                "flow_runs": {"state": {"type": {"any_": ["PENDING"]}}},
++                "state": {"type": "CANCELLED"},
++            },
++        )
++        assert response.status_code == status.HTTP_200_OK
++        result = response.json()
++        assert len(result["results"]) == 2
++
++        # Verify running run was not affected
++        response = await client.get(f"/flow_runs/{running_run.id}")
++        assert response.json()["state"]["type"] == "RUNNING"
++
++
++class TestDeploymentBulkDelete:
++    """Tests for POST /deployments/bulk_delete endpoint."""
++
++    async def test_bulk_delete_deployments(
++        self,
++        session,
++        flow,
++        client,
++    ):
++        """Test bulk deletion of deployments."""
++        # Create deployments
++        deployments = []
++        for i in range(3):
++            deployment = await models.deployments.create_deployment(
++                session=session,
++                deployment=schemas.core.Deployment(
++                    name=f"test-deployment-{uuid4()}",
++                    flow_id=flow.id,
++                ),
++            )
++            deployments.append(deployment)
++        await session.commit()
++
++        # Bulk delete
++        response = await client.post(
++            "/deployments/bulk_delete",
++            json={
++                "deployments": {"id": {"any_": [str(d.id) for d in deployments[:2]]}},
++            },
++        )
++        assert response.status_code == status.HTTP_200_OK
++        data = response.json()
++        assert len(data["deleted"]) == 2
++
++    async def test_bulk_delete_verifies_actual_deletion(
++        self,
++        session,
++        flow,
++        client,
++    ):
++        """Test that deleted deployments are actually gone from the database."""
++        deployment = await models.deployments.create_deployment(
++            session=session,
++            deployment=schemas.core.Deployment(
++                name=f"test-deployment-{uuid4()}",
++                flow_id=flow.id,
++            ),
++        )
++        await session.commit()
++
++        # Delete the deployment
++        response = await client.post(
++            "/deployments/bulk_delete",
++            json={"deployments": {"id": {"any_": [str(deployment.id)]}}},
++        )
++        assert response.status_code == status.HTTP_200_OK
++        assert str(deployment.id) in response.json()["deleted"]
++
++        # Verify it's actually deleted
++        response = await client.get(f"/deployments/{deployment.id}")
++        assert response.status_code == status.HTTP_404_NOT_FOUND
++
++    async def test_bulk_delete_deployments_empty_filter(
++        self,
++        client,
++    ):
++        """Test bulk deletion with empty filter returns empty list."""
++        response = await client.post(
++            "/deployments/bulk_delete",
++            json={
++                "deployments": {"id": {"any_": [str(uuid4())]}},
++            },
++        )
++        assert response.status_code == status.HTTP_200_OK
++        data = response.json()
++        assert data["deleted"] == []
++
++    async def test_bulk_delete_deployments_respects_limit(
++        self,
++        session,
++        flow,
++        client,
++    ):
++        """Test bulk delete respects the limit parameter."""
++        # Create deployments
++        deployments = []
++        for i in range(4):
++            deployment = await models.deployments.create_deployment(
++                session=session,
++                deployment=schemas.core.Deployment(
++                    name=f"test-limit-deployment-{uuid4()}",
++                    flow_id=flow.id,
++                ),
++            )
++            deployments.append(deployment)
++        await session.commit()
++
++        # Try to delete all with a limit of 2
++        response = await client.post(
++            "/deployments/bulk_delete",
++            json={
++                "deployments": {"id": {"any_": [str(d.id) for d in deployments]}},
++                "limit": 2,
++            },
++        )
++        assert response.status_code == status.HTTP_200_OK
++        result = response.json()
++        assert len(result["deleted"]) == 2
++
++    async def test_bulk_delete_deployments_by_name_filter(
++        self,
++        session,
++        flow,
++        client,
++    ):
++        """Test bulk delete with name filter."""
++        unique_prefix = str(uuid4())[:8]
++        deployments = []
++        for i in range(3):
++            deployment = await models.deployments.create_deployment(
++                session=session,
++                deployment=schemas.core.Deployment(
++                    name=f"{unique_prefix}-deployment-{i}",
++                    flow_id=flow.id,
++                ),
++            )
++            deployments.append(deployment)
++
++        # Create one with different name
++        other_deployment = await models.deployments.create_deployment(
++            session=session,
++            deployment=schemas.core.Deployment(
++                name="other-deployment",
++                flow_id=flow.id,
++            ),
++        )
++        await session.commit()
++
++        # Delete by name filter
++        response = await client.post(
++            "/deployments/bulk_delete",
++            json={
++                "deployments": {"name": {"like_": f"{unique_prefix}%"}},
++            },
++        )
++        assert response.status_code == status.HTTP_200_OK
++        result = response.json()
++        assert len(result["deleted"]) == 3
++        assert str(other_deployment.id) not in result["deleted"]
++
++
++class TestDeploymentBulkCreateFlowRun:
++    """Tests for POST /deployments/{id}/create_flow_run/bulk endpoint."""
++
++    async def test_bulk_create_flow_runs(
++        self,
++        deployment,
++        hosted_api_client,
++    ):
++        """Test bulk creation of flow runs from a deployment."""
++        response = await hosted_api_client.post(
++            f"/deployments/{deployment.id}/create_flow_run/bulk",
++            json=[
++                {"name": "run-1"},
++                {"name": "run-2"},
++                {"name": "run-3"},
++            ],
++        )
++        assert response.status_code == status.HTTP_200_OK
++        data = response.json()
++        assert len(data["results"]) == 3
++        for result in data["results"]:
++            assert result["status"] == "CREATED"
++            assert result["flow_run_id"] is not None
++
++    async def test_bulk_create_with_defaults(
++        self,
++        deployment,
++        hosted_api_client,
++    ):
++        """Test bulk create with default parameters (empty objects)."""
++        response = await hosted_api_client.post(
++            f"/deployments/{deployment.id}/create_flow_run/bulk",
++            json=[{}, {}, {}],
++        )
++        assert response.status_code == status.HTTP_200_OK
++        data = response.json()
++        assert len(data["results"]) == 3
++        for result in data["results"]:
++            assert result["status"] == "CREATED"
++            assert result["flow_run_id"] is not None
++
++    async def test_bulk_create_preserves_order(
++        self,
++        deployment,
++        hosted_api_client,
++        client,
++    ):
++        """Results should be returned in the same order as the input."""
++        response = await hosted_api_client.post(
++            f"/deployments/{deployment.id}/create_flow_run/bulk",
++            json=[
++                {"name": "first-run"},
++                {"name": "second-run"},
++                {"name": "third-run"},
++            ],
++        )
++        assert response.status_code == status.HTTP_200_OK
++        results = response.json()["results"]
++
++        # Verify order by fetching each flow run
++        for i, expected_name in enumerate(["first-run", "second-run", "third-run"]):
++            flow_run_id = results[i]["flow_run_id"]
++            fr_response = await client.get(f"/flow_runs/{flow_run_id}")
++            assert fr_response.json()["name"] == expected_name
++
++    async def test_bulk_create_flow_runs_empty_list(
++        self,
++        deployment,
++        hosted_api_client,
++    ):
++        """Test bulk creation with empty list returns empty list."""
++        response = await hosted_api_client.post(
++            f"/deployments/{deployment.id}/create_flow_run/bulk",
++            json=[],
++        )
++        assert response.status_code == status.HTTP_200_OK
++        data = response.json()
++        assert data["results"] == []
++
++    async def test_bulk_create_flow_runs_deployment_not_found(
++        self,
++        hosted_api_client,
++    ):
++        """Test bulk creation with non-existent deployment returns 404."""
++        response = await hosted_api_client.post(
++            f"/deployments/{uuid4()}/create_flow_run/bulk",
++            json=[{"name": "run-1"}],
++        )
++        assert response.status_code == status.HTTP_404_NOT_FOUND
++
++    async def test_bulk_create_empty_list_nonexistent_deployment(
++        self,
++        hosted_api_client,
++    ):
++        """Empty list with nonexistent deployment should return 404, not 200.
++
++        This verifies that authorization checks run even for empty lists.
++        """
++        response = await hosted_api_client.post(
++            f"/deployments/{uuid4()}/create_flow_run/bulk",
++            json=[],
++        )
++        assert response.status_code == status.HTTP_404_NOT_FOUND
++
++    async def test_bulk_create_flow_runs_exceeds_limit(
++        self,
++        deployment,
++        hosted_api_client,
++    ):
++        """Test bulk creation with too many items returns 400."""
++        response = await hosted_api_client.post(
++            f"/deployments/{deployment.id}/create_flow_run/bulk",
++            json=[{"name": f"run-{i}"} for i in range(101)],
++        )
++        assert response.status_code == status.HTTP_400_BAD_REQUEST
++
++    async def test_bulk_create_flow_runs_with_parameters(
++        self,
++        deployment,
++        hosted_api_client,
++    ):
++        """Test bulk creation of flow runs with custom parameters."""
++        response = await hosted_api_client.post(
++            f"/deployments/{deployment.id}/create_flow_run/bulk",
++            json=[
++                {"name": "run-1", "parameters": {"x": 1}},
++                {"name": "run-2", "parameters": {"x": 2}},
++            ],
++        )
++        assert response.status_code == status.HTTP_200_OK
++        data = response.json()
++        assert len(data["results"]) == 2
++        for result in data["results"]:
++            assert result["status"] == "CREATED"
++
++    async def test_bulk_create_flow_runs_with_varying_tags(
++        self,
++        deployment,
++        hosted_api_client,
++        client,
++    ):
++        """Test bulk create with different tags for each flow run."""
++        response = await hosted_api_client.post(
++            f"/deployments/{deployment.id}/create_flow_run/bulk",
++            json=[
++                {"tags": ["batch-1"]},
++                {"tags": ["batch-2"]},
++                {"tags": ["batch-3"]},
++            ],
++        )
++        assert response.status_code == status.HTTP_200_OK
++        results = response.json()["results"]
++        assert len(results) == 3
++
++        # Verify each flow run has the correct tag
++        for i, result in enumerate(results):
++            assert result["status"] == "CREATED"
++            fr_response = await client.get(f"/flow_runs/{result['flow_run_id']}")
++            assert f"batch-{i + 1}" in fr_response.json()["tags"]
++
++    async def test_bulk_create_inherits_deployment_tags(
++        self,
++        session,
++        flow,
++        hosted_api_client,
++        client,
++    ):
++        """Test that flow runs inherit tags from deployment."""
++        deployment = await models.deployments.create_deployment(
++            session=session,
++            deployment=schemas.core.Deployment(
++                name=f"tagged-deployment-{uuid4()}",
++                flow_id=flow.id,
++                tags=["deployment-tag-1", "deployment-tag-2"],
++            ),
++        )
++        await session.commit()
++
++        response = await hosted_api_client.post(
++            f"/deployments/{deployment.id}/create_flow_run/bulk",
++            json=[{"tags": ["run-tag"]}],
++        )
++        assert response.status_code == status.HTTP_200_OK
++        flow_run_id = response.json()["results"][0]["flow_run_id"]
++
++        fr_response = await client.get(f"/flow_runs/{flow_run_id}")
++        tags = fr_response.json()["tags"]
++        assert "deployment-tag-1" in tags
++        assert "deployment-tag-2" in tags
++        assert "run-tag" in tags
++
++
++class TestFlowBulkDelete:
++    """Tests for POST /flows/bulk_delete endpoint."""
++
++    async def test_bulk_delete_flows(
++        self,
++        session,
++        client,
++    ):
++        """Test bulk deletion of flows."""
++        # Create flows
++        flows = []
++        for i in range(3):
++            flow = await models.flows.create_flow(
++                session=session,
++                flow=schemas.core.Flow(name=f"test-flow-{uuid4()}"),
++            )
++            flows.append(flow)
++        await session.commit()
++
++        # Bulk delete
++        response = await client.post(
++            "/flows/bulk_delete",
++            json={
++                "flows": {"id": {"any_": [str(f.id) for f in flows[:2]]}},
++            },
++        )
++        assert response.status_code == status.HTTP_200_OK
++        data = response.json()
++        assert len(data["deleted"]) == 2
++
++    async def test_bulk_delete_verifies_actual_deletion(
++        self,
++        session,
++        client,
++    ):
++        """Test that deleted flows are actually gone from the database."""
++        flow = await models.flows.create_flow(
++            session=session,
++            flow=schemas.core.Flow(name=f"test-flow-{uuid4()}"),
++        )
++        await session.commit()
++
++        # Delete the flow
++        response = await client.post(
++            "/flows/bulk_delete",
++            json={"flows": {"id": {"any_": [str(flow.id)]}}},
++        )
++        assert response.status_code == status.HTTP_200_OK
++        assert str(flow.id) in response.json()["deleted"]
++
++        # Verify it's actually deleted
++        response = await client.get(f"/flows/{flow.id}")
++        assert response.status_code == status.HTTP_404_NOT_FOUND
++
++    async def test_bulk_delete_flows_empty_filter(
++        self,
++        client,
++    ):
++        """Test bulk deletion with empty filter returns empty list."""
++        response = await client.post(
++            "/flows/bulk_delete",
++            json={
++                "flows": {"id": {"any_": [str(uuid4())]}},
++            },
++        )
++        assert response.status_code == status.HTTP_200_OK
++        data = response.json()
++        assert data["deleted"] == []
++
++    async def test_bulk_delete_flows_deletes_deployments(
++        self,
++        session,
++        client,
++    ):
++        """Test bulk deletion of flows also deletes their deployments."""
++        # Create a flow and deployment
++        flow = await models.flows.create_flow(
++            session=session,
++            flow=schemas.core.Flow(name=f"test-flow-{uuid4()}"),
++        )
++        deployment = await models.deployments.create_deployment(
++            session=session,
++            deployment=schemas.core.Deployment(
++                name="test-deployment",
++                flow_id=flow.id,
++            ),
++        )
++        await session.commit()
++
++        # Bulk delete flow
++        response = await client.post(
++            "/flows/bulk_delete",
++            json={
++                "flows": {"id": {"any_": [str(flow.id)]}},
++            },
++        )
++        assert response.status_code == status.HTTP_200_OK
++        assert str(flow.id) in response.json()["deleted"]
++
++        # Verify deployment is also deleted
++        response = await client.get(f"/deployments/{deployment.id}")
++        assert response.status_code == status.HTTP_404_NOT_FOUND
++
++    async def test_bulk_delete_flows_deletes_multiple_deployments(
++        self,
++        session,
++        client,
++    ):
++        """Test bulk deletion of flow deletes all its associated deployments."""
++        flow = await models.flows.create_flow(
++            session=session,
++            flow=schemas.core.Flow(name=f"test-flow-{uuid4()}"),
++        )
++        deployment_ids = []
++        for i in range(3):
++            deployment = await models.deployments.create_deployment(
++                session=session,
++                deployment=schemas.core.Deployment(
++                    name=f"test-deployment-{i}",
++                    flow_id=flow.id,
++                ),
++            )
++            deployment_ids.append(deployment.id)
++        await session.commit()
++
++        # Delete the flow
++        response = await client.post(
++            "/flows/bulk_delete",
++            json={"flows": {"id": {"any_": [str(flow.id)]}}},
++        )
++        assert response.status_code == status.HTTP_200_OK
++
++        # Verify all deployments are deleted
++        for deployment_id in deployment_ids:
++            response = await client.get(f"/deployments/{deployment_id}")
++            assert response.status_code == status.HTTP_404_NOT_FOUND
++
++    async def test_bulk_delete_flows_respects_limit(
++        self,
++        session,
++        client,
++    ):
++        """Test bulk delete respects the limit parameter."""
++        flows = []
++        for i in range(4):
++            flow = await models.flows.create_flow(
++                session=session,
++                flow=schemas.core.Flow(name=f"test-limit-flow-{uuid4()}"),
++            )
++            flows.append(flow)
++        await session.commit()
++
++        # Try to delete all with a limit of 2
++        response = await client.post(
++            "/flows/bulk_delete",
++            json={
++                "flows": {"id": {"any_": [str(f.id) for f in flows]}},
++                "limit": 2,
++            },
++        )
++        assert response.status_code == status.HTTP_200_OK
++        result = response.json()
++        assert len(result["deleted"]) == 2
++
++        # Verify only 2 were deleted
++        deleted_count = 0
++        remaining_count = 0
++        for flow in flows:
++            response = await client.get(f"/flows/{flow.id}")
++            if response.status_code == status.HTTP_404_NOT_FOUND:
++                deleted_count += 1
++            else:
++                remaining_count += 1
++        assert deleted_count == 2
++        assert remaining_count == 2
++
++    async def test_bulk_delete_nonexistent_flows_returns_empty(
++        self,
++        client,
++    ):
++        """Test that bulk delete returns empty list when requested flows don't exist."""
++        nonexistent_ids = [str(uuid4()) for _ in range(3)]
++        response = await client.post(
++            "/flows/bulk_delete",
++            json={
++                "flows": {"id": {"any_": nonexistent_ids}},
++            },
++        )
++        assert response.status_code == status.HTTP_200_OK
++        result = response.json()
++        assert result["deleted"] == []
++
++
++class TestFlowFilterNotAny:
++    """Tests for FlowFilter with not_any_ exclusion filter."""
++
++    async def test_flow_filter_not_any(
++        self,
++        session,
++        client,
++    ):
++        """Test FlowFilter with not_any_ filter."""
++        # Create flows with unique names to avoid conflicts
++        unique_prefix = str(uuid4())[:8]
++        flows = []
++        for i in range(3):
++            flow = await models.flows.create_flow(
++                session=session,
++                flow=schemas.core.Flow(name=f"test-filter-flow-{unique_prefix}-{i}"),
++            )
++            flows.append(flow)
++        await session.commit()
++
++        # Query flows excluding one
++        response = await client.post(
++            "/flows/filter",
++            json={
++                "flows": {
++                    "id": {"not_any_": [str(flows[0].id)]},
++                    "name": {"like_": f"%{unique_prefix}%"},
++                },
++            },
++        )
++        assert response.status_code == status.HTTP_200_OK
++        data = response.json()
++        # Should not include the excluded flow
++        flow_ids = [f["id"] for f in data]
++        assert str(flows[0].id) not in flow_ids
++        # Should include the other flows
++        assert str(flows[1].id) in flow_ids
++        assert str(flows[2].id) in flow_ids
++
++    async def test_flow_filter_not_any_with_any(
++        self,
++        session,
++        client,
++    ):
++        """Test using both any_ and not_any_ together."""
++        unique_prefix = str(uuid4())[:8]
++        flows = []
++        for i in range(4):
++            flow = await models.flows.create_flow(
++                session=session,
++                flow=schemas.core.Flow(name=f"test-combo-flow-{unique_prefix}-{i}"),
++            )
++            flows.append(flow)
++        await session.commit()
++
++        # Include flows 0, 1, 2 but exclude flow 1
++        response = await client.post(
++            "/flows/filter",
++            json={
++                "flows": {
++                    "id": {
++                        "any_": [str(flows[0].id), str(flows[1].id), str(flows[2].id)],
++                        "not_any_": [str(flows[1].id)],
++                    },
++                },
++            },
++        )
++        assert response.status_code == status.HTTP_200_OK
++        data = response.json()
++        flow_ids = [f["id"] for f in data]
++        # Should include 0 and 2, but not 1 or 3
++        assert str(flows[0].id) in flow_ids
++        assert str(flows[1].id) not in flow_ids
++        assert str(flows[2].id) in flow_ids
++        assert str(flows[3].id) not in flow_ids
