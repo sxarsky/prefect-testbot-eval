@@ -1,0 +1,71 @@
+[
+  {
+    "Source": "192.168.65.1:39998",
+    "Destination": "localhost",
+    "RequestBody": "{\"name\":\"skyramp-dup-test\",\"type\":\"process\"}",
+    "ResponseBody": "{\"id\":\"00000000-0000-0000-0000-000000000001\",\"name\":\"skyramp-dup-test\",\"type\":\"process\",\"description\":null,\"is_paused\":false,\"concurrency_limit\":null,\"status\":\"NOT_READY\",\"default_queue_id\":\"00000000-0000-0000-0000-000000000002\"}",
+    "RequestHeaders": {
+      "Content-Type": [
+        "application/json"
+      ]
+    },
+    "ResponseHeaders": {
+      "Content-Type": [
+        "application/json"
+      ]
+    },
+    "Method": "POST",
+    "Path": "/api/work_pools/",
+    "QueryParams": {},
+    "StatusCode": 201,
+    "Port": 4200,
+    "Timestamp": "2026-04-15T06:49:25.534Z",
+    "Scheme": "http"
+  },
+  {
+    "Source": "192.168.65.1:39998",
+    "Destination": "localhost",
+    "RequestBody": "{\"name\":\"skyramp-dup-test\",\"type\":\"process\"}",
+    "ResponseBody": "{}",
+    "RequestHeaders": {
+      "Content-Type": [
+        "application/json"
+      ]
+    },
+    "ResponseHeaders": {
+      "Content-Type": [
+        "application/json"
+      ]
+    },
+    "Method": "POST",
+    "Path": "/api/work_pools/",
+    "QueryParams": {},
+    "StatusCode": 409,
+    "Port": 4200,
+    "Timestamp": "2026-04-15T06:49:25.534Z",
+    "Scheme": "http"
+  },
+  {
+    "Source": "192.168.65.1:39998",
+    "Destination": "localhost",
+    "RequestBody": "",
+    "ResponseBody": "{}",
+    "RequestHeaders": {
+      "Content-Type": [
+        "application/json"
+      ]
+    },
+    "ResponseHeaders": {
+      "Content-Type": [
+        "application/json"
+      ]
+    },
+    "Method": "DELETE",
+    "Path": "/api/work_pools/skyramp-dup-test",
+    "QueryParams": {},
+    "StatusCode": 204,
+    "Port": 4200,
+    "Timestamp": "2026-04-15T06:49:25.534Z",
+    "Scheme": "http"
+  }
+]

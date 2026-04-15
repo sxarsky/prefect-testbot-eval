@@ -1,0 +1,94 @@
+[
+  {
+    "Source": "192.168.65.1:39998",
+    "Destination": "localhost",
+    "RequestBody": "{\"name\":\"skyramp-wp-test\",\"type\":\"process\"}",
+    "ResponseBody": "{\"id\":\"00000000-0000-0000-0000-000000000001\",\"name\":\"skyramp-wp-test\",\"type\":\"process\",\"description\":null,\"is_paused\":false,\"concurrency_limit\":null,\"status\":\"NOT_READY\",\"default_queue_id\":\"00000000-0000-0000-0000-000000000002\"}",
+    "RequestHeaders": {
+      "Content-Type": [
+        "application/json"
+      ]
+    },
+    "ResponseHeaders": {
+      "Content-Type": [
+        "application/json"
+      ]
+    },
+    "Method": "POST",
+    "Path": "/api/work_pools/",
+    "QueryParams": {},
+    "StatusCode": 201,
+    "Port": 4200,
+    "Timestamp": "2026-04-15T06:49:29.747Z",
+    "Scheme": "http"
+  },
+  {
+    "Source": "192.168.65.1:39998",
+    "Destination": "localhost",
+    "RequestBody": "{\"description\":\"updated pool description\",\"concurrency_limit\":10}",
+    "ResponseBody": "{}",
+    "RequestHeaders": {
+      "Content-Type": [
+        "application/json"
+      ]
+    },
+    "ResponseHeaders": {
+      "Content-Type": [
+        "application/json"
+      ]
+    },
+    "Method": "PATCH",
+    "Path": "/api/work_pools/skyramp-wp-test",
+    "QueryParams": {},
+    "StatusCode": 204,
+    "Port": 4200,
+    "Timestamp": "2026-04-15T06:49:29.747Z",
+    "Scheme": "http"
+  },
+  {
+    "Source": "192.168.65.1:39998",
+    "Destination": "localhost",
+    "RequestBody": "",
+    "ResponseBody": "{\"id\":\"00000000-0000-0000-0000-000000000001\",\"name\":\"skyramp-wp-test\",\"type\":\"process\",\"description\":\"updated pool description\",\"is_paused\":false,\"concurrency_limit\":10,\"status\":\"NOT_READY\",\"default_queue_id\":\"00000000-0000-0000-0000-000000000002\"}",
+    "RequestHeaders": {
+      "Content-Type": [
+        "application/json"
+      ]
+    },
+    "ResponseHeaders": {
+      "Content-Type": [
+        "application/json"
+      ]
+    },
+    "Method": "GET",
+    "Path": "/api/work_pools/skyramp-wp-test",
+    "QueryParams": {},
+    "StatusCode": 200,
+    "Port": 4200,
+    "Timestamp": "2026-04-15T06:49:29.747Z",
+    "Scheme": "http"
+  },
+  {
+    "Source": "192.168.65.1:39998",
+    "Destination": "localhost",
+    "RequestBody": "",
+    "ResponseBody": "{}",
+    "RequestHeaders": {
+      "Content-Type": [
+        "application/json"
+      ]
+    },
+    "ResponseHeaders": {
+      "Content-Type": [
+        "application/json"
+      ]
+    },
+    "Method": "DELETE",
+    "Path": "/api/work_pools/skyramp-wp-test",
+    "QueryParams": {},
+    "StatusCode": 204,
+    "Port": 4200,
+    "Timestamp": "2026-04-15T06:49:29.747Z",
+    "Scheme": "http"
+  }
+]
