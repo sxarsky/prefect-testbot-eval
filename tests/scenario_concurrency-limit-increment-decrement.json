@@ -1,0 +1,94 @@
+[
+  {
+    "Source": "192.168.65.1:39998",
+    "Destination": "localhost",
+    "RequestBody": "{\"name\": \"test-incr-limit-skyramp\", \"limit\": 5, \"active\": true}",
+    "ResponseBody": "{\"id\": \"some-uuid\", \"name\": \"test-incr-limit-skyramp\", \"limit\": 5, \"active\": true, \"active_slots\": 0, \"denied_slots\": 0, \"slot_decay_per_second\": 0.0}",
+    "RequestHeaders": {
+      "Content-Type": [
+        "application/json"
+      ]
+    },
+    "ResponseHeaders": {
+      "Content-Type": [
+        "application/json"
+      ]
+    },
+    "Method": "POST",
+    "Path": "/api/v2/concurrency_limits/",
+    "QueryParams": {},
+    "StatusCode": 201,
+    "Port": 4200,
+    "Timestamp": "2026-04-15T06:39:07.411Z",
+    "Scheme": "http"
+  },
+  {
+    "Source": "192.168.65.1:39998",
+    "Destination": "localhost",
+    "RequestBody": "{\"slots\": 1, \"names\": [\"test-incr-limit-skyramp\"], \"mode\": \"concurrency\"}",
+    "ResponseBody": "[{\"id\": \"some-uuid\", \"name\": \"test-incr-limit-skyramp\", \"limit\": 5}]",
+    "RequestHeaders": {
+      "Content-Type": [
+        "application/json"
+      ]
+    },
+    "ResponseHeaders": {
+      "Content-Type": [
+        "application/json"
+      ]
+    },
+    "Method": "POST",
+    "Path": "/api/v2/concurrency_limits/increment",
+    "QueryParams": {},
+    "StatusCode": 200,
+    "Port": 4200,
+    "Timestamp": "2026-04-15T06:39:07.411Z",
+    "Scheme": "http"
+  },
+  {
+    "Source": "192.168.65.1:39998",
+    "Destination": "localhost",
+    "RequestBody": "{\"slots\": 1, \"names\": [\"test-incr-limit-skyramp\"]}",
+    "ResponseBody": "[{\"id\": \"some-uuid\", \"name\": \"test-incr-limit-skyramp\", \"limit\": 5}]",
+    "RequestHeaders": {
+      "Content-Type": [
+        "application/json"
+      ]
+    },
+    "ResponseHeaders": {
+      "Content-Type": [
+        "application/json"
+      ]
+    },
+    "Method": "POST",
+    "Path": "/api/v2/concurrency_limits/decrement",
+    "QueryParams": {},
+    "StatusCode": 200,
+    "Port": 4200,
+    "Timestamp": "2026-04-15T06:39:07.411Z",
+    "Scheme": "http"
+  },
+  {
+    "Source": "192.168.65.1:39998",
+    "Destination": "localhost",
+    "RequestBody": "",
+    "ResponseBody": "{}",
+    "RequestHeaders": {
+      "Content-Type": [
+        "application/json"
+      ]
+    },
+    "ResponseHeaders": {
+      "Content-Type": [
+        "application/json"
+      ]
+    },
+    "Method": "DELETE",
+    "Path": "/api/v2/concurrency_limits/test-incr-limit-skyramp",
+    "QueryParams": {},
+    "StatusCode": 204,
+    "Port": 4200,
+    "Timestamp": "2026-04-15T06:39:07.411Z",
+    "Scheme": "http"
+  }
+]
