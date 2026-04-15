@@ -1,0 +1,71 @@
+[
+  {
+    "Source": "192.168.65.1:39998",
+    "Destination": "localhost",
+    "RequestBody": "{\"name\": \"test-locked-limit-skyramp\", \"limit\": 1, \"active\": true}",
+    "ResponseBody": "{\"id\": \"some-uuid\", \"name\": \"test-locked-limit-skyramp\", \"limit\": 1, \"active\": true, \"active_slots\": 0, \"denied_slots\": 0, \"slot_decay_per_second\": 0.0}",
+    "RequestHeaders": {
+      "Content-Type": [
+        "application/json"
+      ]
+    },
+    "ResponseHeaders": {
+      "Content-Type": [
+        "application/json"
+      ]
+    },
+    "Method": "POST",
+    "Path": "/api/v2/concurrency_limits/",
+    "QueryParams": {},
+    "StatusCode": 201,
+    "Port": 4200,
+    "Timestamp": "2026-04-15T06:39:11.683Z",
+    "Scheme": "http"
+  },
+  {
+    "Source": "192.168.65.1:39998",
+    "Destination": "localhost",
+    "RequestBody": "{\"slots\": 1, \"names\": [\"test-locked-limit-skyramp\"], \"mode\": \"concurrency\"}",
+    "ResponseBody": "[{\"id\": \"some-uuid\", \"name\": \"test-locked-limit-skyramp\", \"limit\": 1}]",
+    "RequestHeaders": {
+      "Content-Type": [
+        "application/json"
+      ]
+    },
+    "ResponseHeaders": {
+      "Content-Type": [
+        "application/json"
+      ]
+    },
+    "Method": "POST",
+    "Path": "/api/v2/concurrency_limits/increment",
+    "QueryParams": {},
+    "StatusCode": 200,
+    "Port": 4200,
+    "Timestamp": "2026-04-15T06:39:11.683Z",
+    "Scheme": "http"
+  },
+  {
+    "Source": "192.168.65.1:39998",
+    "Destination": "localhost",
+    "RequestBody": "{\"slots\": 1, \"names\": [\"test-locked-limit-skyramp\"], \"mode\": \"concurrency\"}",
+    "ResponseBody": "{}",
+    "RequestHeaders": {
+      "Content-Type": [
+        "application/json"
+      ]
+    },
+    "ResponseHeaders": {
+      "Content-Type": [
+        "application/json"
+      ]
+    },
+    "Method": "POST",
+    "Path": "/api/v2/concurrency_limits/increment",
+    "QueryParams": {},
+    "StatusCode": 423,
+    "Port": 4200,
+    "Timestamp": "2026-04-15T06:39:11.683Z",
+    "Scheme": "http"
+  }
+]
