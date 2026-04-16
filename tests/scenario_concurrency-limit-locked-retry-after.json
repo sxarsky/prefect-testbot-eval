@@ -1,0 +1,48 @@
+[
+  {
+    "Source": "192.168.65.1:39998",
+    "Destination": "host.docker.internal",
+    "RequestBody": "{\"name\": \"locked-retry-test-1744876800\", \"limit\": 1, \"active_slots\": 1}",
+    "ResponseBody": "{\"id\": \"uuid\", \"name\": \"locked-retry-test-1744876800\", \"limit\": 1, \"active\": true, \"active_slots\": 1, \"denied_slots\": 0, \"slot_decay_per_second\": 0.0, \"avg_slot_occupancy_seconds\": 2.0}",
+    "RequestHeaders": {
+      "Content-Type": [
+        "application/json"
+      ]
+    },
+    "ResponseHeaders": {
+      "Content-Type": [
+        "application/json"
+      ]
+    },
+    "Method": "POST",
+    "Path": "/api/v2/concurrency_limits",
+    "QueryParams": {},
+    "StatusCode": 201,
+    "Port": 4200,
+    "Timestamp": "2026-04-16T06:01:00.985Z",
+    "Scheme": "http"
+  },
+  {
+    "Source": "192.168.65.1:39998",
+    "Destination": "host.docker.internal",
+    "RequestBody": "{\"slots\": 1, \"names\": [\"locked-retry-test-1744876800\"], \"mode\": \"concurrency\"}",
+    "ResponseBody": "{}",
+    "RequestHeaders": {
+      "Content-Type": [
+        "application/json"
+      ]
+    },
+    "ResponseHeaders": {
+      "Content-Type": [
+        "application/json"
+      ]
+    },
+    "Method": "POST",
+    "Path": "/api/v2/concurrency_limits/increment",
+    "QueryParams": {},
+    "StatusCode": 423,
+    "Port": 4200,
+    "Timestamp": "2026-04-16T06:01:00.985Z",
+    "Scheme": "http"
+  }
+]
