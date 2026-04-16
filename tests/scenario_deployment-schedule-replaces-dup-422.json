@@ -1,0 +1,71 @@
+[
+  {
+    "Source": "192.168.65.1:39998",
+    "Destination": "host.docker.internal",
+    "RequestBody": "{\"name\": \"test-flow-dup-1713000000\"}",
+    "ResponseBody": "{\"id\": \"<uuid>\", \"name\": \"test-flow-dup-1713000000\"}",
+    "RequestHeaders": {
+      "Content-Type": [
+        "application/json"
+      ]
+    },
+    "ResponseHeaders": {
+      "Content-Type": [
+        "application/json"
+      ]
+    },
+    "Method": "POST",
+    "Path": "/api/flows",
+    "QueryParams": {},
+    "StatusCode": 201,
+    "Port": 4200,
+    "Timestamp": "2026-04-16T06:29:35.984Z",
+    "Scheme": "http"
+  },
+  {
+    "Source": "192.168.65.1:39998",
+    "Destination": "host.docker.internal",
+    "RequestBody": "{\"name\": \"test-dep-dup-1713000000\", \"flow_id\": \"<chained-flow-id>\", \"schedules\": [{\"schedule\": {\"cron\": \"0 9 * * *\", \"timezone\": \"UTC\"}, \"active\": true, \"slug\": \"target-slug\"}]}",
+    "ResponseBody": "{\"id\": \"<uuid>\", \"name\": \"test-dep-dup-1713000000\", \"flow_id\": \"<uuid>\", \"schedules\": [{\"id\": \"<uuid>\", \"slug\": \"target-slug\", \"active\": true}]}",
+    "RequestHeaders": {
+      "Content-Type": [
+        "application/json"
+      ]
+    },
+    "ResponseHeaders": {
+      "Content-Type": [
+        "application/json"
+      ]
+    },
+    "Method": "POST",
+    "Path": "/api/deployments",
+    "QueryParams": {},
+    "StatusCode": 201,
+    "Port": 4200,
+    "Timestamp": "2026-04-16T06:29:35.984Z",
+    "Scheme": "http"
+  },
+  {
+    "Source": "192.168.65.1:39998",
+    "Destination": "host.docker.internal",
+    "RequestBody": "{\"schedules\": [{\"schedule\": {\"cron\": \"0 10 * * *\", \"timezone\": \"UTC\"}, \"active\": true, \"slug\": \"new-slug-a\", \"replaces\": \"target-slug\"}, {\"schedule\": {\"cron\": \"0 11 * * *\", \"timezone\": \"UTC\"}, \"active\": true, \"slug\": \"new-slug-b\", \"replaces\": \"target-slug\"}]}",
+    "ResponseBody": "{\"detail\": \"Multiple schedules have 'replaces' targeting the same slug: target-slug\"}",
+    "RequestHeaders": {
+      "Content-Type": [
+        "application/json"
+      ]
+    },
+    "ResponseHeaders": {
+      "Content-Type": [
+        "application/json"
+      ]
+    },
+    "Method": "PATCH",
+    "Path": "/api/deployments/{id}",
+    "QueryParams": {},
+    "StatusCode": 422,
+    "Port": 4200,
+    "Timestamp": "2026-04-16T06:29:35.984Z",
+    "Scheme": "http"
+  }
+]
