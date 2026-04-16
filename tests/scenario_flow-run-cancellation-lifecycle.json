@@ -1,0 +1,140 @@
+[
+  {
+    "Source": "192.168.65.1:39998",
+    "Destination": "host.docker.internal",
+    "RequestBody": "{\"name\": \"test-flow-cancellation-1713000000\", \"tags\": []}",
+    "ResponseBody": "{\"id\": \"<uuid>\", \"name\": \"test-flow-cancellation-1713000000\"}",
+    "RequestHeaders": {
+      "Content-Type": [
+        "application/json"
+      ]
+    },
+    "ResponseHeaders": {
+      "Content-Type": [
+        "application/json"
+      ]
+    },
+    "Method": "POST",
+    "Path": "/api/flows",
+    "QueryParams": {},
+    "StatusCode": 201,
+    "Port": 4200,
+    "Timestamp": "2026-04-16T06:30:35.952Z",
+    "Scheme": "http"
+  },
+  {
+    "Source": "192.168.65.1:39998",
+    "Destination": "host.docker.internal",
+    "RequestBody": "{\"flow_id\": \"<chained from step 0 id>\", \"name\": \"test-run-cancellation-1713000000\", \"state\": {\"type\": \"SCHEDULED\"}, \"tags\": []}",
+    "ResponseBody": "{\"id\": \"<uuid>\", \"name\": \"test-run-cancellation-1713000000\", \"flow_id\": \"<uuid>\", \"state\": {\"type\": \"SCHEDULED\"}}",
+    "RequestHeaders": {
+      "Content-Type": [
+        "application/json"
+      ]
+    },
+    "ResponseHeaders": {
+      "Content-Type": [
+        "application/json"
+      ]
+    },
+    "Method": "POST",
+    "Path": "/api/flow_runs",
+    "QueryParams": {},
+    "StatusCode": 201,
+    "Port": 4200,
+    "Timestamp": "2026-04-16T06:30:35.952Z",
+    "Scheme": "http"
+  },
+  {
+    "Source": "192.168.65.1:39998",
+    "Destination": "host.docker.internal",
+    "RequestBody": "{\"state\": {\"type\": \"PENDING\", \"name\": \"Pending\"}}",
+    "ResponseBody": "{\"state\": {\"type\": \"PENDING\", \"name\": \"Pending\"}, \"status\": \"ACCEPT\"}",
+    "RequestHeaders": {
+      "Content-Type": [
+        "application/json"
+      ]
+    },
+    "ResponseHeaders": {
+      "Content-Type": [
+        "application/json"
+      ]
+    },
+    "Method": "POST",
+    "Path": "/api/flow_runs/{flow_run_id}/set_state",
+    "QueryParams": {},
+    "StatusCode": 201,
+    "Port": 4200,
+    "Timestamp": "2026-04-16T06:30:35.952Z",
+    "Scheme": "http"
+  },
+  {
+    "Source": "192.168.65.1:39998",
+    "Destination": "host.docker.internal",
+    "RequestBody": "{\"state\": {\"type\": \"RUNNING\", \"name\": \"Running\"}}",
+    "ResponseBody": "{\"state\": {\"type\": \"RUNNING\", \"name\": \"Running\"}, \"status\": \"ACCEPT\"}",
+    "RequestHeaders": {
+      "Content-Type": [
+        "application/json"
+      ]
+    },
+    "ResponseHeaders": {
+      "Content-Type": [
+        "application/json"
+      ]
+    },
+    "Method": "POST",
+    "Path": "/api/flow_runs/{flow_run_id}/set_state",
+    "QueryParams": {},
+    "StatusCode": 201,
+    "Port": 4200,
+    "Timestamp": "2026-04-16T06:30:35.952Z",
+    "Scheme": "http"
+  },
+  {
+    "Source": "192.168.65.1:39998",
+    "Destination": "host.docker.internal",
+    "RequestBody": "{\"state\": {\"type\": \"CANCELLING\", \"name\": \"Cancelling\"}}",
+    "ResponseBody": "{\"state\": {\"type\": \"CANCELLING\", \"name\": \"Cancelling\"}, \"status\": \"ACCEPT\"}",
+    "RequestHeaders": {
+      "Content-Type": [
+        "application/json"
+      ]
+    },
+    "ResponseHeaders": {
+      "Content-Type": [
+        "application/json"
+      ]
+    },
+    "Method": "POST",
+    "Path": "/api/flow_runs/{flow_run_id}/set_state",
+    "QueryParams": {},
+    "StatusCode": 201,
+    "Port": 4200,
+    "Timestamp": "2026-04-16T06:30:35.952Z",
+    "Scheme": "http"
+  },
+  {
+    "Source": "192.168.65.1:39998",
+    "Destination": "host.docker.internal",
+    "RequestBody": "",
+    "ResponseBody": "{\"id\": \"<uuid>\", \"state\": {\"type\": \"CANCELLING\", \"name\": \"Cancelling\"}}",
+    "RequestHeaders": {
+      "Content-Type": [
+        "application/json"
+      ]
+    },
+    "ResponseHeaders": {
+      "Content-Type": [
+        "application/json"
+      ]
+    },
+    "Method": "GET",
+    "Path": "/api/flow_runs/{flow_run_id}",
+    "QueryParams": {},
+    "StatusCode": 200,
+    "Port": 4200,
+    "Timestamp": "2026-04-16T06:30:35.952Z",
+    "Scheme": "http"
+  }
+]
