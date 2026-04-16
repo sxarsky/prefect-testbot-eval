@@ -1,0 +1,71 @@
+[
+  {
+    "Source": "192.168.65.1:39998",
+    "Destination": "host.docker.internal",
+    "RequestBody": "{\"name\":\"legacy-queue-1745000000\",\"description\":\"Initial legacy queue\",\"priority\":1}",
+    "ResponseBody": "{\"id\":\"uuid\",\"name\":\"legacy-queue-1745000000\",\"description\":\"Initial legacy queue\",\"priority\":1,\"is_paused\":false}",
+    "RequestHeaders": {
+      "Content-Type": [
+        "application/json"
+      ]
+    },
+    "ResponseHeaders": {
+      "Content-Type": [
+        "application/json"
+      ]
+    },
+    "Method": "POST",
+    "Path": "/api/work_queues/",
+    "QueryParams": {},
+    "StatusCode": 201,
+    "Port": 4200,
+    "Timestamp": "2026-04-16T06:14:45.038Z",
+    "Scheme": "http"
+  },
+  {
+    "Source": "192.168.65.1:39998",
+    "Destination": "host.docker.internal",
+    "RequestBody": "{\"description\":\"Updated legacy queue\",\"concurrency_limit\":2}",
+    "ResponseBody": "{}",
+    "RequestHeaders": {
+      "Content-Type": [
+        "application/json"
+      ]
+    },
+    "ResponseHeaders": {
+      "Content-Type": [
+        "application/json"
+      ]
+    },
+    "Method": "PATCH",
+    "Path": "/api/work_queues/{id}",
+    "QueryParams": {},
+    "StatusCode": 204,
+    "Port": 4200,
+    "Timestamp": "2026-04-16T06:14:45.038Z",
+    "Scheme": "http"
+  },
+  {
+    "Source": "192.168.65.1:39998",
+    "Destination": "host.docker.internal",
+    "RequestBody": "",
+    "ResponseBody": "{\"id\":\"uuid\",\"name\":\"legacy-queue-1745000000\",\"description\":\"Updated legacy queue\",\"concurrency_limit\":2,\"is_paused\":false}",
+    "RequestHeaders": {
+      "Content-Type": [
+        "application/json"
+      ]
+    },
+    "ResponseHeaders": {
+      "Content-Type": [
+        "application/json"
+      ]
+    },
+    "Method": "GET",
+    "Path": "/api/work_queues/{id}",
+    "QueryParams": {},
+    "StatusCode": 200,
+    "Port": 4200,
+    "Timestamp": "2026-04-16T06:14:45.038Z",
+    "Scheme": "http"
+  }
+]
