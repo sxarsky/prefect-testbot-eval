@@ -1,0 +1,94 @@
+[
+  {
+    "Source": "192.168.65.1:39998",
+    "Destination": "host.docker.internal",
+    "RequestBody": "{\"name\":\"pool-for-queue-1745000000\",\"type\":\"process\"}",
+    "ResponseBody": "{\"id\":\"uuid\",\"name\":\"pool-for-queue-1745000000\",\"type\":\"process\",\"is_paused\":false,\"status\":\"NOT_READY\"}",
+    "RequestHeaders": {
+      "Content-Type": [
+        "application/json"
+      ]
+    },
+    "ResponseHeaders": {
+      "Content-Type": [
+        "application/json"
+      ]
+    },
+    "Method": "POST",
+    "Path": "/api/work_pools/",
+    "QueryParams": {},
+    "StatusCode": 201,
+    "Port": 4200,
+    "Timestamp": "2026-04-16T06:14:42.299Z",
+    "Scheme": "http"
+  },
+  {
+    "Source": "192.168.65.1:39998",
+    "Destination": "host.docker.internal",
+    "RequestBody": "{\"name\":\"test-queue-1745000000\",\"description\":\"Initial queue description\",\"priority\":1}",
+    "ResponseBody": "{\"id\":\"uuid\",\"name\":\"test-queue-1745000000\",\"description\":\"Initial queue description\",\"priority\":1,\"is_paused\":false}",
+    "RequestHeaders": {
+      "Content-Type": [
+        "application/json"
+      ]
+    },
+    "ResponseHeaders": {
+      "Content-Type": [
+        "application/json"
+      ]
+    },
+    "Method": "POST",
+    "Path": "/api/work_pools/{work_pool_name}/queues",
+    "QueryParams": {},
+    "StatusCode": 201,
+    "Port": 4200,
+    "Timestamp": "2026-04-16T06:14:42.299Z",
+    "Scheme": "http"
+  },
+  {
+    "Source": "192.168.65.1:39998",
+    "Destination": "host.docker.internal",
+    "RequestBody": "{\"description\":\"Updated queue description\",\"concurrency_limit\":3}",
+    "ResponseBody": "{}",
+    "RequestHeaders": {
+      "Content-Type": [
+        "application/json"
+      ]
+    },
+    "ResponseHeaders": {
+      "Content-Type": [
+        "application/json"
+      ]
+    },
+    "Method": "PATCH",
+    "Path": "/api/work_pools/{work_pool_name}/queues/{name}",
+    "QueryParams": {},
+    "StatusCode": 204,
+    "Port": 4200,
+    "Timestamp": "2026-04-16T06:14:42.299Z",
+    "Scheme": "http"
+  },
+  {
+    "Source": "192.168.65.1:39998",
+    "Destination": "host.docker.internal",
+    "RequestBody": "",
+    "ResponseBody": "{\"id\":\"uuid\",\"name\":\"test-queue-1745000000\",\"description\":\"Updated queue description\",\"concurrency_limit\":3,\"is_paused\":false}",
+    "RequestHeaders": {
+      "Content-Type": [
+        "application/json"
+      ]
+    },
+    "ResponseHeaders": {
+      "Content-Type": [
+        "application/json"
+      ]
+    },
+    "Method": "GET",
+    "Path": "/api/work_pools/{work_pool_name}/queues/{name}",
+    "QueryParams": {},
+    "StatusCode": 200,
+    "Port": 4200,
+    "Timestamp": "2026-04-16T06:14:42.299Z",
+    "Scheme": "http"
+  }
+]
