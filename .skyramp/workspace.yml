@@ -1,0 +1,10 @@
+# Skyramp workspace config — steers TestBot at the correct Prefect server
+# base URL inside the Docker network. Without this, the executor hits
+# 127.0.0.1:4200 which the Prefect server redirects (307) to
+# host.docker.internal:4200, and the executor does not follow POST redirects,
+# causing every test to fail at the first request.
+
+api:
+  baseUrl: http://host.docker.internal:4200
+
+testDirectory: tests
