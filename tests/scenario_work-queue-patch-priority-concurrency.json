@@ -1,0 +1,106 @@
+[
+  {
+    "Source": "192.168.65.1:39998",
+    "Destination": "host.docker.internal",
+    "RequestBody": "{\"name\": \"test-pool-wq-1713000000\", \"type\": \"prefect-agent\"}",
+    "ResponseBody": "{\"id\": \"chained\", \"name\": \"test-pool-wq-1713000000\", \"type\": \"prefect-agent\"}",
+    "RequestHeaders": {
+      "Content-Type": [
+        "application/json"
+      ],
+      "Authorization": [
+        "Bearer SKYRAMP_PLACEHOLDER_TOKEN"
+      ]
+    },
+    "ResponseHeaders": {
+      "Content-Type": [
+        "application/json"
+      ]
+    },
+    "Method": "POST",
+    "Path": "/api/work_pools",
+    "QueryParams": {},
+    "StatusCode": 201,
+    "Port": 4200,
+    "Timestamp": "2026-04-17T16:09:54.347Z",
+    "Scheme": "http"
+  },
+  {
+    "Source": "192.168.65.1:39998",
+    "Destination": "host.docker.internal",
+    "RequestBody": "{\"name\": \"test-queue-1713000000\", \"description\": \"initial queue desc\", \"priority\": 1, \"concurrency_limit\": null}",
+    "ResponseBody": "{\"id\": \"chained\", \"name\": \"test-queue-1713000000\", \"work_pool_name\": \"test-pool-wq-1713000000\", \"priority\": 1}",
+    "RequestHeaders": {
+      "Content-Type": [
+        "application/json"
+      ],
+      "Authorization": [
+        "Bearer SKYRAMP_PLACEHOLDER_TOKEN"
+      ]
+    },
+    "ResponseHeaders": {
+      "Content-Type": [
+        "application/json"
+      ]
+    },
+    "Method": "POST",
+    "Path": "/api/work_pools/test-pool-wq-1713000000/queues",
+    "QueryParams": {},
+    "StatusCode": 201,
+    "Port": 4200,
+    "Timestamp": "2026-04-17T16:09:54.347Z",
+    "Scheme": "http"
+  },
+  {
+    "Source": "192.168.65.1:39998",
+    "Destination": "host.docker.internal",
+    "RequestBody": "{\"name\": \"test-queue-1713000000\", \"description\": \"updated queue desc\", \"priority\": 2, \"concurrency_limit\": 10}",
+    "ResponseBody": "{}",
+    "RequestHeaders": {
+      "Content-Type": [
+        "application/json"
+      ],
+      "Authorization": [
+        "Bearer SKYRAMP_PLACEHOLDER_TOKEN"
+      ]
+    },
+    "ResponseHeaders": {
+      "Content-Type": [
+        "application/json"
+      ]
+    },
+    "Method": "PATCH",
+    "Path": "/api/work_pools/test-pool-wq-1713000000/queues/test-queue-1713000000",
+    "QueryParams": {},
+    "StatusCode": 204,
+    "Port": 4200,
+    "Timestamp": "2026-04-17T16:09:54.347Z",
+    "Scheme": "http"
+  },
+  {
+    "Source": "192.168.65.1:39998",
+    "Destination": "host.docker.internal",
+    "RequestBody": "",
+    "ResponseBody": "{\"id\": \"chained\", \"name\": \"test-queue-1713000000\", \"work_pool_name\": \"test-pool-wq-1713000000\", \"description\": \"updated queue desc\", \"priority\": 2, \"concurrency_limit\": 10}",
+    "RequestHeaders": {
+      "Content-Type": [
+        "application/json"
+      ],
+      "Authorization": [
+        "Bearer SKYRAMP_PLACEHOLDER_TOKEN"
+      ]
+    },
+    "ResponseHeaders": {
+      "Content-Type": [
+        "application/json"
+      ]
+    },
+    "Method": "GET",
+    "Path": "/api/work_pools/test-pool-wq-1713000000/queues/test-queue-1713000000",
+    "QueryParams": {},
+    "StatusCode": 200,
+    "Port": 4200,
+    "Timestamp": "2026-04-17T16:09:54.347Z",
+    "Scheme": "http"
+  }
+]
