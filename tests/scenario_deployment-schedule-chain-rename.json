@@ -1,0 +1,94 @@
+[
+  {
+    "Source": "192.168.65.1:39998",
+    "Destination": "host.docker.internal",
+    "RequestBody": "{\"name\": \"flow-chain-rename-1713000000\"}",
+    "ResponseBody": "{\"id\": \"chained\", \"name\": \"flow-chain-rename-1713000000\"}",
+    "RequestHeaders": {
+      "Content-Type": [
+        "application/json"
+      ]
+    },
+    "ResponseHeaders": {
+      "Content-Type": [
+        "application/json"
+      ]
+    },
+    "Method": "POST",
+    "Path": "/api/flows",
+    "QueryParams": {},
+    "StatusCode": 201,
+    "Port": 4200,
+    "Timestamp": "2026-04-17T16:12:17.982Z",
+    "Scheme": "http"
+  },
+  {
+    "Source": "192.168.65.1:39998",
+    "Destination": "host.docker.internal",
+    "RequestBody": "{\"name\": \"deploy-chain-rename-1713000000\", \"flow_id\": \"chained\", \"schedules\": [{\"slug\": \"sched-a\", \"schedule\": {\"interval\": 3600.0, \"anchor_date\": \"2024-01-01T00:00:00Z\"}, \"active\": true}, {\"slug\": \"sched-b\", \"schedule\": {\"interval\": 7200.0, \"anchor_date\": \"2024-01-01T00:00:00Z\"}, \"active\": true}]}",
+    "ResponseBody": "{\"id\": \"chained\", \"name\": \"deploy-chain-rename-1713000000\", \"flow_id\": \"chained\"}",
+    "RequestHeaders": {
+      "Content-Type": [
+        "application/json"
+      ]
+    },
+    "ResponseHeaders": {
+      "Content-Type": [
+        "application/json"
+      ]
+    },
+    "Method": "POST",
+    "Path": "/api/deployments",
+    "QueryParams": {},
+    "StatusCode": 201,
+    "Port": 4200,
+    "Timestamp": "2026-04-17T16:12:17.982Z",
+    "Scheme": "http"
+  },
+  {
+    "Source": "192.168.65.1:39998",
+    "Destination": "host.docker.internal",
+    "RequestBody": "{\"schedules\": [{\"slug\": \"sched-b\", \"replaces\": \"sched-a\", \"schedule\": {\"interval\": 3600.0, \"anchor_date\": \"2024-01-01T00:00:00Z\"}, \"active\": true}, {\"slug\": \"sched-c\", \"replaces\": \"sched-b\", \"schedule\": {\"interval\": 7200.0, \"anchor_date\": \"2024-01-01T00:00:00Z\"}, \"active\": true}]}",
+    "ResponseBody": "{}",
+    "RequestHeaders": {
+      "Content-Type": [
+        "application/json"
+      ]
+    },
+    "ResponseHeaders": {
+      "Content-Type": [
+        "application/json"
+      ]
+    },
+    "Method": "PATCH",
+    "Path": "/api/deployments/{deployment_id}",
+    "QueryParams": {},
+    "StatusCode": 204,
+    "Port": 4200,
+    "Timestamp": "2026-04-17T16:12:17.982Z",
+    "Scheme": "http"
+  },
+  {
+    "Source": "192.168.65.1:39998",
+    "Destination": "host.docker.internal",
+    "RequestBody": "",
+    "ResponseBody": "[{\"id\": \"chained\", \"slug\": \"sched-b\", \"active\": true}, {\"id\": \"chained\", \"slug\": \"sched-c\", \"active\": true}]",
+    "RequestHeaders": {
+      "Content-Type": [
+        "application/json"
+      ]
+    },
+    "ResponseHeaders": {
+      "Content-Type": [
+        "application/json"
+      ]
+    },
+    "Method": "GET",
+    "Path": "/api/deployments/{deployment_id}/schedules",
+    "QueryParams": {},
+    "StatusCode": 200,
+    "Port": 4200,
+    "Timestamp": "2026-04-17T16:12:17.982Z",
+    "Scheme": "http"
+  }
+]
