@@ -1,0 +1,94 @@
+[
+  {
+    "Source": "192.168.65.1:39998",
+    "Destination": "host.docker.internal",
+    "RequestBody": "{\"name\": \"test-flow-rename-1745000000\"}",
+    "ResponseBody": "{\"id\": \"string\", \"name\": \"string\"}",
+    "RequestHeaders": {
+      "Content-Type": [
+        "application/json"
+      ]
+    },
+    "ResponseHeaders": {
+      "Content-Type": [
+        "application/json"
+      ]
+    },
+    "Method": "POST",
+    "Path": "/api/flows",
+    "QueryParams": {},
+    "StatusCode": 201,
+    "Port": 4200,
+    "Timestamp": "2026-04-17T16:13:54.972Z",
+    "Scheme": "http"
+  },
+  {
+    "Source": "192.168.65.1:39998",
+    "Destination": "host.docker.internal",
+    "RequestBody": "{\"name\": \"test-dep-rename-1745000000\", \"flow_id\": \"00000000-0000-0000-0000-000000000001\", \"schedules\": [{\"schedule\": {\"cron\": \"0 9 * * *\", \"timezone\": \"UTC\"}, \"slug\": \"old-daily-email\", \"active\": true}]}",
+    "ResponseBody": "{\"id\": \"string\", \"name\": \"string\"}",
+    "RequestHeaders": {
+      "Content-Type": [
+        "application/json"
+      ]
+    },
+    "ResponseHeaders": {
+      "Content-Type": [
+        "application/json"
+      ]
+    },
+    "Method": "POST",
+    "Path": "/api/deployments",
+    "QueryParams": {},
+    "StatusCode": 201,
+    "Port": 4200,
+    "Timestamp": "2026-04-17T16:13:54.972Z",
+    "Scheme": "http"
+  },
+  {
+    "Source": "192.168.65.1:39998",
+    "Destination": "host.docker.internal",
+    "RequestBody": "{\"schedules\": [{\"schedule\": {\"cron\": \"0 8 * * *\", \"timezone\": \"UTC\"}, \"slug\": \"new-daily-digest\", \"replaces\": \"old-daily-email\", \"active\": true}]}",
+    "ResponseBody": "{}",
+    "RequestHeaders": {
+      "Content-Type": [
+        "application/json"
+      ]
+    },
+    "ResponseHeaders": {
+      "Content-Type": [
+        "application/json"
+      ]
+    },
+    "Method": "PATCH",
+    "Path": "/api/deployments/{id}",
+    "QueryParams": {},
+    "StatusCode": 204,
+    "Port": 4200,
+    "Timestamp": "2026-04-17T16:13:54.972Z",
+    "Scheme": "http"
+  },
+  {
+    "Source": "192.168.65.1:39998",
+    "Destination": "host.docker.internal",
+    "RequestBody": "",
+    "ResponseBody": "[{\"slug\": \"new-daily-digest\", \"active\": true}]",
+    "RequestHeaders": {
+      "Content-Type": [
+        "application/json"
+      ]
+    },
+    "ResponseHeaders": {
+      "Content-Type": [
+        "application/json"
+      ]
+    },
+    "Method": "GET",
+    "Path": "/api/deployments/{id}/schedules",
+    "QueryParams": {},
+    "StatusCode": 200,
+    "Port": 4200,
+    "Timestamp": "2026-04-17T16:13:54.972Z",
+    "Scheme": "http"
+  }
+]
